@@ -1,0 +1,75 @@
+{{ template "base" . }}
+
+{{ define "title" }}{{ if .IsEdit }}Редактирование: {{ .Article.Title }}{{ else }}Создание статьи{{ end }}{{ end }}
+
+{{ define "content" }}
+<div class="row">
+    <div class="col-lg-9 mx-auto">
+        <div class="card border-0 shadow-sm p-4 mb-4">
+            <h2 class="mb-4">{{ if .IsEdit }}📝 Редактирование статьи{{ else }}✨ Создание новой статьи{{ end }}</h2>
+            
+            <form id="articleForm">
+                <!-- Скрытые поля для логики -->
+                <input type="hidden" id="articleSlug" value="{{ .Article.Slug }}">
+                <input type="hidden" id="isEditMode" value="{{ .IsEdit }}">
+
+                <!-- Шапка статьи -->
+                <div class="mb-3">
+                    <label for="articleTitle" class="form-label fw-bold">Заголовок статьи</label>
+                    <input type="text" class="form-control" id="articleTitle" value="{{ .Article.Title }}" required placeholder="Например: Архитектура Go проектов">
+                </div>
+
+                <div class="mb-4">
+                    <label for="folderSelect" class="form-label fw-bold">Тематика (Папка)</label>
+                    <select class="form-select" id="folderSelect" required>
+                        <option value="">-- Выберите папку --</option>
+                        {{ range .Folders }}
+                            <option value="{{ .ID }}" {{ if eq $.Article.FolderID .ID }}selected{{ end }}>{{ .Name }}</option>
+                        {{ end }}
+                    </select>
+                </div>
+
+                <!-- Центральная область: контейнер для динамических блоков -->
+                <h5 class="fw-bold mb-3">Содержимое статьи (Блоки)</h5>
+                <div id="blocksContainer" class="mb-4">
+                    <!-- Сюда JS вставит существующие блоки при редактировании -->
+                </div>
+
+                <!-- Кнопки управления структурой -->
+                <div class="mb-4">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addNewBlock('')">
+                        ➕ Добавить текстовый блок
+                    </button>
+                </div>
+
+                <hr>
+
+                <!-- Кнопка отправки формы -->
+                <div class="d-flex justify-content-between">
+                    <a href="/" class="btn btn-light">Отмена</a>
+                    <button type="submit" class="btn btn-success px-4">Сохранить статью</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{ end }}
+
+{{ define "scripts" }}
+<!-- 📦 Подключаем стили и скрипт редактора Quill с твоего CDN -->
+<link href="<CDN_URL_QUILL_CSS>" rel="stylesheet">
+<script src="<CDN_URL_QUILL_JS>"></script>
+
+<!-- Подключаем наш изолированный JS-файл для управления редактором -->
+<script src="<SELF_URL_STATIC_JS_EDITOR_JS>"></script>
+
+<script>
+    // Если мы в режиме редактирования, сервер передаст блоки в формате JSON, и мы их отрендерим
+    const existingBlocks = {{ if .BlocksJSON }}{{ .BlocksJSON }}{{ else }}[]{{ end }};
+    
+    // Инициализируем скрипт при загрузке страницы
+    document.addEventListener("DOMContentLoaded", function() {
+        initEditor(existingBlocks);
+    });
+</script>
+{{ end }}

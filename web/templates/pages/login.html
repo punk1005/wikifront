@@ -1,0 +1,29 @@
+{{ template "base" . }}
+
+{{ define "title" }}Авторизация{{ end }}
+
+{{ define "content" }}
+<div class="row">
+    <div class="col-md-5 mx-auto">
+        <div class="card border-0 shadow-sm p-4 mt-5">
+            <h3 class="card-title text-center mb-4">🔐 Вход в Go Wiki</h3>
+            
+            <form action="/auth/login" method="POST">
+                <div class="mb-3">
+                    <label for="username" class="form-label fw-bold">Имя пользователя</label>
+                    <input type="text" class="form-control" id="username" name="username" required placeholder="Введите ваш логин">
+                </div>
+                <div class="mb-4">
+                    <label for="password" class="form-label fw-bold">Пароль</label>
+                    <input type="password" class="form-control" id="password" name="password" required placeholder="Введите пароль">
+                </div>
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">Войти</button>
+            </form>
+            
+            <div class="text-center mt-3 text-muted small">
+                Используйте аккаунт <strong>admin</strong> с паролем <strong>admin</strong> для тестирования.
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

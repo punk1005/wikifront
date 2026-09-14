@@ -1,0 +1,51 @@
+{{ template "base" . }}
+
+{{ define "title" }}Панель Администратора{{ end }}
+
+{{ define "content" }}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card border-0 shadow-sm p-4">
+            <h2 class="fw-bold text-danger mb-4">🛡️ Панель администратора</h2>
+            <p class="text-muted">Здесь отображаются статьи, которые Писатели или Модераторы пометили как неактуальные. Вы можете удалить их из базы данных окончательно.</p>
+            
+            <h4 class="fw-bold mt-4 mb-3 text-secondary">⏳ Очередь на окончательное удаление</h4>
+            
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Название статьи</th>
+                            <th>Автор</th>
+                            <th>Дата запроса</th>
+                            <th class="text-end">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range .Articles }}
+                            <tr id="row-{{ .Slug }}">
+                                <td>
+                                    <a href="/wiki/{{ .Slug }}" class="fw-bold text-decoration-none text-dark" target="_blank">📄 {{ .Title }}</a>
+                                    <br><small class="text-muted">Slug: {{ .Slug }}</small>
+                                </td>
+                                <td><span class="badge bg-light text-dark border">{{ .AuthorName }}</span></td>
+                                <td><small class="text-muted">{{ .UpdatedAt.Format "02.01.2006 15:04" }}</small></td>
+                                <td class="text-end">
+                                    <!-- Кнопка вызывает JS функцию отправки POST запроса на полный Delete -->
+                                    <button onclick="hardDeleteArticle('{{ .Slug }}')" class="btn btn-danger btn-sm px-3 fw-bold">
+                                        💥 Стереть совсем
+                                    </button>
+                                </td>
+                            </tr>
+                        {{ range else }}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">Очередь пуста. Статей на удаление нет! 🎉</td>
+                            </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

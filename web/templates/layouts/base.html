@@ -1,0 +1,53 @@
+{{ define "base" }}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ template "title" . }} | Go Wiki</title>
+    
+    <!-- Подключение Bootstrap CSS с твоего CDN -->
+    <link rel="stylesheet" href="<CDN_URL_BOOTSTRAP_CSS>">
+    <!-- Твои кастомные стили (если нужны) -->
+    <link rel="stylesheet" href="<SELF_URL_STATIC_CSS_APP_CSS>">
+</head>
+<body class="bg-light">
+
+    <!-- Навигационная панель (Шапка) -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">📚 Go Wiki</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-center navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="/folders">Тематики</a></li>
+                </ul>
+                <div class="navbar-nav">
+                    <!-- Будет динамически меняться в зависимости от сессии -->
+                    {{ if .User }}
+                        <span class="nav-link text-light me-3">Привет, {{ .User.Username }} ({{ .User.Role }})</span>
+                        <a class="btn btn-outline-light btn-sm" href="/auth/logout">Выйти</a>
+                    {{ else }}
+                        <a class="btn btn-outline-light btn-sm" href="/auth/login">Войти</a>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основной контент страницы -->
+    <main class="container">
+        {{ template "content" . }}
+    </main>
+
+    <!-- Подключение jQuery и Bootstrap JS с твоего CDN -->
+    <script src="<CDN_URL_JQUERY_JS>"></script>
+    <script src="<CDN_URL_BOOTSTRAP_JS>"></script>
+    
+    <!-- Твой кастомный JS для фронта -->
+    <script src="<SELF_URL_STATIC_JS_APP_JS>"></script>
+    
+    <!-- Сюда хэндлеры смогут внедрять специфичные скрипты (например, для редактора) -->
+    {{ block "scripts" . }}{{ end }}
+</body>
+</html>
+{{ end }}

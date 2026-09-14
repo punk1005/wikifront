@@ -1,0 +1,64 @@
+{{ template "base" . }}
+
+{{ define "title" }}{{ .Article.Title }}{{ end }}
+
+{{ define "content" }}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        
+        <!-- Шапка статьи -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-body">
+                <h1 class="card-title display-5 fw-bold">{{ .Article.Title }}</h1>
+                <p class="text-muted small mb-0">
+                    📁 Папка: <span class="badge bg-secondary">{{ .Article.FolderName }}</span> | 
+                    ✍️ Автор: <strong>{{ .Article.AuthorName }}</strong> | 
+                    📅 Дата: {{ .Article.CreatedAt.Format "02.01.2006" }}
+                </p>
+                
+                <!-- Кнопки управления для Писателей/Модераторов -->
+                {{ if .CanEdit }}
+                    <div class="mt-3">
+                        <a href="/wiki/{{ .Article.Slug }}/edit" class="btn btn-sm btn-warning">Редактировать</a>
+                        <button onclick="markForDeletion('{{ .Article.Slug }}')" class="btn btn-sm btn-danger">На удаление</button>
+                    </div>
+                {{ end }}
+            </div>
+        </div>
+
+        <!-- Центральная область: Вывод текстовых блоков друг за другом -->
+        <div class="article-blocks mb-5">
+            {{ range .Blocks }}
+                <div class="card mb-3 border-0 shadow-sm">
+                    <div class="card-body prose">
+                        <!-- Важно: .Content передается как template.HTML, чтобы Go не экранировал теги -->
+                        {{ .Content }} 
+                    </div>
+                </div>
+            {{ range else }}
+                <p class="text-muted">В этой статье еще нет контента.</p>
+            {{ end }}
+        </div>
+
+        <!-- Область файлов -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold">📎 Прикрепленные файлы</div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    {{ range .Files }}
+                        <li class="list-group-item d-flex justify-content-between align-content-center">
+                            <!-- Ссылка на скачивание файла из бэкенда/хранилища -->
+                            <a href="<SELF_URL_DOWNLOAD_FILE_PREFIX>{{ .FileName }}" download="{{ .OriginalName }}">
+                                📄 {{ .OriginalName }}
+                            </a>
+                        </li>
+                    {{ range else }}
+                        <li class="list-group-item text-muted small">Файлы не прикреплены</li>
+                    {{ end }}
+                </ul>
+            </div>
+        </div>
+
+    </div>
+</div>
+{{ end }}

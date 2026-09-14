@@ -1,0 +1,64 @@
+{{ template "base" . }}
+
+{{ define "title" }}{{ if .IsList }}Тематики{{ else }}Статьи в папке{{ end }}{{ end }}
+
+{{ define "content" }}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        
+        {{ if .IsList }}
+            <!-- 📁 РЕЖИМ 1: Список всех папок -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="fw-bold">📁 Тематические папки</h2>
+                <!-- Кнопку создания папки видит только Модератор и Админ -->
+                {{ if or (eq .User.Role "moderator") (eq .User.Role "admin") }}
+                    <button class="btn btn-sm btn-primary" onclick="createNewFolder()">Создать папку</button>
+                {{ end }}
+            </div>
+
+            <div class="list-group shadow-sm">
+                {{ range .Folders }}
+                    <a href="/folders/{{ .Slug }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3">
+                        <span class="fw-bold text-dark">📂 {{ .Name }}</span>
+                        <span class="badge bg-secondary rounded-pill">Перейти →</span>
+                    </a>
+                {{ range else }}
+                    <div class="list-group-item text-muted text-center py-4">Папок пока не создано.</div>
+                {{ end }}
+            </div>
+
+        {{ else }}
+            <!-- 📄 РЕЖИМ 2: Список статей внутри конкретной папки -->
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/folders">Все папки</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ .FolderSlug }}</li>
+                </ol>
+            </nav>
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="fw-bold">📝 Статьи в тематике: "{{ .FolderSlug }}"</h2>
+                <!-- Создать статью может любой, кроме Reader -->
+                {{ if and .User (ne .User.Role "reader") }}
+                    <a href="/wiki/create" class="btn btn-sm btn-success">➕ Написать статью</a>
+                {{ end }}
+            </div>
+
+            <div class="list-group shadow-sm">
+                {{ range .Articles }}
+                    <a href="/wiki/{{ .Slug }}" class="list-group-item list-group-item-action py-3">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1 text-primary fw-bold">{{ .Title }}</h5>
+                            <small class="text-muted">{{ .CreatedAt.Format "02.01.2006" }}</small>
+                        </div>
+                        <p class="mb-1 text-muted small">Автор: {{ .AuthorName }}</p>
+                    </a>
+                {{ range else }}
+                    <div class="list-group-item text-muted text-center py-4">В этой папке пока нет ни одной статьи.</div>
+                {{ end }}
+            </div>
+        {{ end }}
+
+    </div>
+</div>
+{{ end }}
