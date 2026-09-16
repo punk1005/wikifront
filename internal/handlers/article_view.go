@@ -37,29 +37,39 @@ func NewArticleViewHandler(client ArticleViewerClient) (*ArticleViewHandler, err
 }
 
 func (h *ArticleViewHandler) ViewArticle(w http.ResponseWriter, r *http.Request) {
-	// Извлекаем slug из URL (например, из /wiki/some-slug-here)
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 || parts[2] == "" {
-		http.Error(w, "Статья не найдена (неверный URL)", http.StatusNotFound)
+	// 1. Очищаем путь от ведущих и замыкающих слэшей (например, "/some-slug-here/" -> "some-slug-here")
+	path := strings.Trim(r.URL.Path, "/")
+	
+	// Если путь пустой, значит пользователь зашел просто на корень (например, domain/wiki/)
+	if path == "" {
+		// В этом случае логично перенаправить его на список папок/тематик
+		http.Redirect(w, r, "/folders", http.StatusSeeOther)
 		return
 	}
-	slug := parts[2]
 
-	// 1. Запрашиваем данные у wikiapi через наш клиент
+	// 2. Извлекаем чистый slug. Если путь заканчивается на /edit, отрезаем его
+	slug := strings.TrimSuffix(path, "/edit")
+
+	// На всякий случай проверяем, не осталось ли косых черт внутри слага
+	if slug == "" || strings.Contains(slug, "/") {
+		http.Error(w, "Статья не найдена (неверный формат URL)", http.StatusNotFound)
+		return
+	}
+
+	// 3. Запрашиваем данные у wikiapi через наш клиент
 	article, blocks, files, err := h.client.GetArticleBySlug(slug)
 	if err != nil {
 		http.Error(w, "Ошибка при получении статьи с бэкенда", http.StatusInternalServerError)
 		return
 	}
 
-	// 2. Получаем текущего пользователя из контекста (его туда положит Middleware авторизации)
-	// Для тестирования пока представим, что юзер прилетит из сессии. Если его нет — он reader.
+	// 4. Получаем текущего пользователя из контекста через наш ключ UserKey
 	var currentUser *model.User
-	if val := r.Context().Value("user"); val != nil {
+	if val := r.Context().Value(middleware.UserKey); val != nil {
 		currentUser = val.(*model.User)
 	}
 
-	// 3. Вычисляем права на редактирование/удаление статьи
+	// 5. Вычисляем права на редактирование/удаление статьи
 	canEdit := false
 	if currentUser != nil {
 		if currentUser.Role == model.RoleAdmin || currentUser.Role == model.RoleModifier {
@@ -69,7 +79,7 @@ func (h *ArticleViewHandler) ViewArticle(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// 4. Собираем данные для шаблона
+	// 6. Собираем данные для шаблона
 	data := model.ArticlePageData{
 		User:    currentUser,
 		Article: article,
@@ -78,7 +88,7 @@ func (h *ArticleViewHandler) ViewArticle(w http.ResponseWriter, r *http.Request)
 		CanEdit: canEdit,
 	}
 
-	// 5. Рендерим страницу. Название шаблона "base" определено внутри layouts/base.html
+	// 7. Рендерим страницу
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.templates.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

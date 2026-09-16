@@ -67,8 +67,7 @@ func main() {
 	mux.Handle("/folders/", middleware.Authenticate(http.HandlerFunc(folderHandler.ListFoldersOrArticles)))
 
 	// Просмотр и редактирование конкретных статей по уникальной ссылке (slug)
-	mux.Handle("/wiki/", middleware.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Если URL заканчивается на /edit — отправляем в редактор, иначе — на чтение
+	mux.Handle("/", middleware.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/edit") {
 			editHandler.ShowEditForm(w, r)
 		} else {
@@ -82,7 +81,7 @@ func main() {
 	protectedCreatePage := middleware.Authenticate(
 		middleware.RequireRole(model.RoleWriter, model.RoleModifier, model.RoleAdmin)(createPageHandler),
 	)
-	mux.Handle("/wiki/create", protectedCreatePage)
+	mux.Handle("/create", protectedCreatePage)
 
 
 	// --- МАРШРУТ АДМИНИСТРАТОРА ---

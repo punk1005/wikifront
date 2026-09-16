@@ -72,42 +72,53 @@ func (h *ArticleEditHandler) ShowCreateForm(w http.ResponseWriter, r *http.Reque
 	h.templates.ExecuteTemplate(w, "base", data)
 }
 
-// Показ страницы редактирования существующей статьи
+// ShowEditForm показывает страницу редактирования существующей статьи
 func (h *ArticleEditHandler) ShowEditForm(w http.ResponseWriter, r *http.Request) {
-	currentUser := h.getUserFromContext(r)
+	// 1. Получаем текущего пользователя из контекста через правильный ключ пакета middleware
+	var currentUser *model.User
+	if val := r.Context().Value(middleware.UserKey); val != nil {
+		currentUser = val.(*model.User)
+	}
+
+	// Защита: Анонимы и Читатели не имеют доступа к редактору
 	if currentUser == nil || currentUser.Role == model.RoleReader {
 		http.Error(w, "Доступ запрещен.", http.StatusForbidden)
 		return
 	}
 
-	// Парсим slug статьи из URL (например, /wiki/my-slug/edit)
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 {
-		http.Error(w, "Неверный URL", http.StatusBadRequest)
+	// 2. Очищаем путь от ведущих/замыкающих слэшей (например, "/my-slug/edit/" -> "my-slug/edit")
+	path := strings.Trim(r.URL.Path, "/")
+	
+	// Отрезаем суффикс "/edit", чтобы получить чистый slug статьи
+	slug := strings.TrimSuffix(path, "/edit")
+
+	// Проверяем корректность слага (он не должен быть пустым или содержать другие слэши)
+	if slug == "" || strings.Contains(slug, "/") {
+		http.Error(w, "Неверный формат URL статьи", http.StatusBadRequest)
 		return
 	}
-	slug := parts[2] // Индекс зависит от точного роутинга
 
-	// Запрашиваем статью и её блоки из API
+	// 3. Запрашиваем статью и её блоки из API по чистому slug
 	article, blocks, _, err := h.client.GetArticleBySlug(slug)
 	if err != nil {
 		http.Error(w, "Статья не найдена", http.StatusNotFound)
 		return
 	}
 
-	// ПРОВЕРКА РОЛЕЙ: Писатель может править только свою статью
+	// 4. ПРОВЕРКА РОЛЕЙ: Писатель может править только свою статью
 	if currentUser.Role == model.RoleWriter && article.AuthorID != currentUser.ID {
 		http.Error(w, "Вы можете редактировать только собственные статьи.", http.StatusForbidden)
 		return
 	}
 
-	// Переводим массив блоков в JSON, чтобы JS на фронте смог наполнить Quill-редакторы
+	// 5. Переводим массив блоков в JSON для инициализации Quill-редакторов на фронтенде
 	blocksBytes, err := json.Marshal(blocks)
 	if err != nil {
-		http.Error(w, "Ошибка сериализации блоков", http.StatusInternalServerError)
+		http.Error(w, "Ошибка сериализации блоков контента", http.StatusInternalServerError)
 		return
 	}
 
+	// 6. Получаем папки для выпадающего списка
 	folders, err := h.client.GetFolders()
 	if err != nil {
 		http.Error(w, "Ошибка при получении категорий", http.StatusInternalServerError)
@@ -119,12 +130,15 @@ func (h *ArticleEditHandler) ShowEditForm(w http.ResponseWriter, r *http.Request
 		IsEdit:     true,
 		Article:    article,
 		Folders:    folders,
-		BlocksJSON: template.JS(blocksBytes), // Приведение к template.JS отключает экранирование кавычек в теге <script>
+		BlocksJSON: template.JS(blocksBytes), // template.JS предотвращает экранирование JSON-кавычек в теге <script>
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	h.templates.ExecuteTemplate(w, "base", data)
+	if err := h.templates.ExecuteTemplate(w, "base", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
+
 
 // Хелпер для извлечения юзера из контекста (сессии)
 func (h *ArticleEditHandler) getUserFromContext(r *http.Request) *model.User {
