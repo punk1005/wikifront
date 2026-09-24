@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Главная | База знаний Wiki</title>
+    <!-- Подключите ваш локальный Bootstrap 5 CSS здесь -->
+    <link href="/cdn/static/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .wiki-header {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+            color: white;
+            padding: 4rem 2rem;
+            margin-bottom: 2rem;
+            border-radius: 0 0 1rem 1rem;
+        }
+        .folder-card {
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .folder-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">📚 Punk Wiki</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin/">Панель управления</a>
+                    </li>
+                    <!-- Кнопка Выйти -->
+                    <li class="nav-item">
+                        <a class="nav-link text-warning" href="#" id="btn-logout">Выйти</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Шапка главной страницы -->
+    <div class="container p-0">
+        <div class="wiki-header text-center shadow">
+            <h1 class="display-4 fw-bold">Добро пожаловать в Базу Знаний</h1>
+            <p class="lead">Находите инструкции, статьи и документацию по проектам</p>
+        </div>
+        <div class="mb-3" id="create-article-zone">
+            <button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#createArticleModal">
+                ✍️ Написать статью
+            </button>
+        </div>
+    </div>
+
+    <!-- Основной контент -->
+    <div class="container mb-5">
+        <div class="row">
+            
+            <!-- Левая колонка: Список разделов (динамический) -->
+            <div class="col-lg-8 mb-4">
+                <h3 class="h4 mb-3 border-bottom pb-2">Разделы знаний</h3>
+                <div class="row g-3" id="folders-container">
+                    <!-- Заглушка на время загрузки / если БД пуста -->
+                    <div class="col-md-6">
+                        <div class="card h-100 shadow-sm folder-card">
+                            <div class="card-body">
+                                <h5 class="card-title text-primary">📁 Общий раздел</h5>
+                                <p class="card-text text-muted small">Загрузка тематик из базы данных...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка: Последние измененные статьи -->
+            <div class="col-lg-4">
+                <h3 class="h4 mb-3 border-bottom pb-2">Последние статьи</h3>
+                <div class="list-group shadow-sm" id="latest-articles">
+                    <!-- Пример того, как JS сформирует ссылку со SLUG -->
+                    <a href="/article/primer-slug" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1 text-truncate fw-bold">Пример статьи</h6>
+                        </div>
+                        <small class="text-muted">Раздел: Общий</small>
+                    </a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНЫЕ ОКНА -->
+    
+    <!-- Модальное окно создания статьи (заполнение метаданных) -->
+        <div class="modal fade" id="createArticleModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Новая статья</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="create-article-form">
+                    <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Название статьи</label>
+                        <input type="text" class="form-control" id="art-title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Уникальный Slug (для URL)</label>
+                        <input type="text" class="form-control" id="art-slug" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Раздел / Папка</label>
+                        <select class="form-select" id="art-folder" required>
+                            <!-- Сюда JS динамически подставит список существующих папок -->
+                        </select>
+                    </div>
+                    <div class="alert alert-danger d-none" id="art-error"></div>
+                    </div>
+                    <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success">Создать и перейти к редактированию</button>
+                    </div>
+                </form>
+                </div>
+            </div>
+        </div>
+    
+
+    <!-- КОНЕЦ МОДАЛЬНЫЕ ОКНА -->
+
+    <script src="/wiki/static/jslib/wikicore.js"></script>
+    <!-- Подключите ваш локальный jQuery и Bootstrap JS здесь -->
+    <script src="/cdn/static/jslib/jquery-3.6.0.min.js"></script>
+    <script src="/cdn/static/jslib/bootstrap.5.3.0.bundle.min.js"></script>
+
+    <!-- Логика сборки главной страницы -->
+    <script>
+        $(document).ready(function() {
+            loadWikiData();
+
+            function loadWikiData() {
+                // 1. Загружаем папки (folders) из API_DB через наш прокси
+                $.ajax({
+                    url: WIC.APP_PREFIX+'/api/get/getfolders',
+                    method: 'GET',
+                    success: function(folders) {
+                        if (folders && folders.length > 0) {
+                            let html = '';
+                            folders.forEach(function(folder) {
+                                html += `
+                                    <div class="col-md-6">
+                                        <div class="card h-100 shadow-sm folder-card" onclick="window.location.href='${WIC.APP_PREFIX}/folder/${folder.slug}'">
+                                            <div class="card-body">
+                                                <h5 class="card-title text-primary">📁 ${escapeHtml(folder.name)}</h5>
+                                                <span class="badge bg-secondary">slug: ${escapeHtml(folder.slug)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            $('#folders-container').html(html);
+                        }
+                    },
+                    error: function() {
+                        console.log('Не удалось загрузить папки с API.');
+                    }
+                });
+
+                // 2. Загружаем свежие статьи (articles)
+                $.ajax({
+                    url: WIC.APP_PREFIX+'/api/get/articlesnew',
+                    method: 'GET',
+                    success: function(articles) {
+                        let html = '';
+                        if (articles && articles.length > 0) {
+                            
+                            articles.forEach(function(article) {
+                                // Сервер Go отдаст шаблон /article/index.html, а фронтенд внутри него прочитает slug из URL
+                                html += `
+                                    <a href="${WIC.APP_PREFIX}/article/${article.slug}" class="list-group-item list-group-item-action">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h6 class="mb-1 text-truncate fw-bold">${escapeHtml(article.title)}</h6>
+                                        </div>
+                                        <small class="text-muted">Slug: ${escapeHtml(article.slug)}</small>
+                                    </a>
+                                `;
+                            });                            
+                        } else {
+                            html = '<h4>Статей пока нет!</h4>'
+                        }
+                        $('#latest-articles').html(html);
+                    },
+                    error: function() {
+                        console.log('Не удалось загрузить последние статьи.');
+                    }
+                });
+            }
+
+            
+        });
+
+        // =========================================================================
+        // ОБРАБОТЧИК ФОРМЫ СОЗДАНИЯ СТАТЬИ (Внутри ready, но отдельно от loadWikiData)
+        // =========================================================================
+        $('#create-article-form').submit(function(e) {
+            e.preventDefault();
+            $('#art-error').addClass('d-none');
+
+            const payload = {
+                folder_id: $('#art-folder').val(),
+                title: $('#art-title').val(),
+                // Приводим к нижнему регистру и заменяем все спецсимволы на дефисы
+                slug: $('#art-slug').val().toLowerCase().trim().replace(/[^a-z0-9-]/g, '-')
+            };
+
+            $.ajax({
+                url: WIC.APP_PREFIX + '/api/post/create_article',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function(response) {
+                    // Успешно создано в БД. Закрываем модалку и редиректим на редактирование
+                    window.location.href = WIC.APP_PREFIX + '/editarticle/' + payload.slug;
+                },
+                error: function(xhr) {
+                    if (xhr.status === 403) {
+                        $('#art-error').text('У вас нет прав на создание статей (роль Reader).').removeClass('d-none');
+                    } else {
+                        $('#art-error').text('Ошибка создания. Возможно, такой URL-слаг уже используется.').removeClass('d-none');
+                    }
+                }
+            });
+        });
+
+        // Логика разлогина
+        $('#btn-logout').click(function(e) {
+            e.preventDefault();
+                        
+            const logoutUrl = WIC.APP_PREFIX + '/api/post/logout';
+
+            $.ajax({
+                url: logoutUrl,
+                method: 'POST', // Можно и GET, но POST семантически правильнее для действий
+                success: function() {
+                    // После успешного удаления сессии редиректим на страницу логина
+                    window.location.href = WIC.APP_PREFIX + '/login';
+                },
+                error: function() {
+                    alert('Ошибка при выходе из системы');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

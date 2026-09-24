@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Просмотр статьи</title>
+    <link href="/cdn/static/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .article-container { max-width: 800px; background: white; padding: 2.5rem; border-radius: 0.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">📚 Punk Wiki</a>
+            <a class="btn btn-outline-light btn-sm" href="/">Назад на главную</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="article-container m-auto mt-4" id="article-view">
+            <nav aria-label="breadcrumb">
+              <ol class="breadcrumb">
+                <li class="breadcrumb-with-item small text-muted">Раздел: <span id="article-folder" class="fw-bold">...</span></li>
+              </ol>
+            </nav>
+
+            <h1 class="display-5 fw-bold mb-2" id="article-title">Загрузка статьи...</h1>
+            
+            <div class="text-muted small mb-4">
+                Автор: <span id="article-author" class="fw-bold">...</span> | 
+                Опубликовано: <span id="article-date">...</span>
+            </div>
+
+            <hr>
+
+            <!-- Основное тело статьи (сюда потом будут рендериться article_blocks) -->
+            <div id="article-content" class="fs-5 lh-base mt-4">
+                <p class="text-muted">Здесь будут отображаться текстовые блоки статьи...</p>
+            </div>
+
+            <!-- Контейнер для файлов (в самом низу статьи) -->
+            <div class="mt-5 p-4 bg-light rounded border d-none" id="article-files-zone">
+                <h6 class="fw-bold mb-3 text-muted">📎 Прикрепленные документы и файлы:</h6>
+                <div class="list-group shadow-sm" id="article-files-list">
+                    <!-- Сюда JS вставит ссылки на скачивание -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/wiki/static/jslib/wikicore.js"></script>
+    <script src="/cdn/static/jslib/jquery-3.6.0.min.js"></script>
+    
+    <script>
+    $(document).ready(function() {
+        // Извлекаем slug из URL
+        const pathParts = window.location.pathname.split('/');
+        const slug = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+        
+        if (!slug) {
+            $('#article-title').text('Статья не найдена');
+            return;
+        }
+
+        // 1. Главный запрос: получаем метаданные статьи
+        $.ajax({
+            url: WIC.APP_PREFIX + '/api/get/article?slug=' + slug,
+            method: 'GET',
+            success: function(response) {
+                if (response && response.length > 0) {
+                    const article = response[0];
+                    
+                    // Наполняем шапку статьи данными
+                    $('#article-title').text(article.title);
+                    $('#article-folder').text(article.folder_name);
+                    $('#article-author').text(article.author);
+                    $('#article-date').text(new Date(article.created_at).toLocaleString('ru-RU'));
+                    document.title = article.title + " | Wiki";
+                    
+                    // Получаем ID и передаем его в специализированные функции
+                    const currentArticleId = article.id;
+                    
+                    loadArticleBlocks(currentArticleId); // Вызов функции загрузки текста
+                    loadArticleFiles(currentArticleId);  // Вызов функции загрузки файлов
+
+                } else {
+                    $('#article-title').text('Статья не найдена или удалена');
+                }
+            },
+            error: function() {
+                $('#article-title').text('Ошибка загрузки статьи');
+            }
+        });
+    });
+
+    // ФУНКЦИЯ: Загрузка текстовых блоков статьи
+    function loadArticleBlocks(articleId) {
+        $.ajax({
+            url: WIC.APP_PREFIX + '/api/get/article_blocks?article_id=' + articleId,
+            method: 'GET',
+            success: function(blocks) {
+                if (blocks && blocks.length > 0) {
+                    let blocksHtml = '';
+                    blocks.forEach(function(block) {
+                        blocksHtml += `<div class="article-block-item mb-4">${block.content}</div>`;
+                    });
+                    $('#article-content').html(blocksHtml);
+                } else {
+                    $('#article-content').html('<p class="text-muted italic">У этой статьи еще нет текстового содержимого.</p>');
+                }
+            },
+            error: function() {
+                $('#article-content').html('<p class="text-danger">Ошибка загрузки текстовых блоков статьи.</p>');
+            }
+        });
+    }
+
+    // ФУНКЦИЯ: Загрузка прикрепленных файлов статьи
+    function loadArticleFiles(articleId) {
+        $.ajax({
+            url: WIC.APP_PREFIX + '/api/get/article_files?article_id=' + articleId,
+            method: 'GET',
+            success: function(files) {
+                if (files && files.length > 0) {
+                    let filesHtml = '';
+                    files.forEach(function(file) {
+                        const downloadUrl = WIC.APP_PREFIX + '/uploads/' + file.file_name;
+                        const cleanOriginalName = escapeHtml(file.original_name); // Экранируем оригинальное имя
+
+                        filesHtml += `
+                            <a href="${downloadUrl}" 
+                            download="${cleanOriginalName}" 
+                            target="_blank" 
+                            class="list-group-item list-group-item-action py-2">
+                                📄 <span class="fw-bold text-primary">${cleanOriginalName}</span>
+                            </a>
+                        `;
+                    });
+                    $('#article-files-list').html(filesHtml);
+                    $('#article-files-zone').removeClass('d-none'); 
+                } else {
+                    $('#article-files-list').html('');
+                    $('#article-files-zone').addClass('d-none');
+                }
+            },
+            error: function() {
+                console.error('Ошибка при загрузке файлов статьи');
+            }
+        });
+    }
+    </script>
+
+
+</body>
+</html>

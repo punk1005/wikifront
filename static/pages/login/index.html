@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход в систему | WikiFront</title>
+    <link href="/cdn/static/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            background-color: #f5f5f5;
+        }
+        .form-signin {
+            max-width: 360px;
+            padding: 15px;
+        }
+    </style>
+</head>
+<body class="w-100 m-auto">
+
+<main class="form-signin w-100 m-auto text-center bg-white p-4 rounded shadow-sm">
+    <form id="login-form">
+        <h1 class="h3 mb-3 fw-normal">Авторизация Wiki</h1>
+
+        <div class="form-floating mb-2">
+            <input type="text" class="form-control" id="username" placeholder="Имя пользователя" required>
+            <label for="username">Имя пользователя</label>
+        </div>
+        <div class="form-floating mb-3">
+            <input type="password" class="form-control" id="password" placeholder="Пароль" required>
+            <label for="password">Пароль</label>
+        </div>
+
+        <div class="alert alert-danger d-none" id="error-alert"></div>
+
+        <button class="w-100 btn btn-lg btn-primary" type="submit" id="btn-submit">Войти</button>
+        <p class="mt-4 mb-3 text-muted">&copy; 2026 Punk-Wiki</p>
+    </form>
+</main>
+
+<script src="/wiki/static/jslib/wikicore.js"></script>
+
+<script src="/cdn/static/jslib/jquery-3.6.0.min.js"></script>
+<script>
+    $('#login-form').submit(function(e) {
+        e.preventDefault();
+        $('#error-alert').addClass('d-none');
+        
+        const username = $('#username').val();
+        const password = $('#password').val();
+
+        // Запрос пойдет на /wiki/api/post/dologin (префикс берется из текущего URL страницы)        
+        const loginUrl = WIC.APP_PREFIX + '/api/post/dologin';
+
+        $.ajax({
+            url: loginUrl,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ 
+                username: username, 
+                password: password 
+            }), 
+            success: function(response) {
+                // Если login.sql вернул не пустой массив объектов
+                if (response && response.length > 0) {
+                    // Кука выставлена сервером, перенаправляем на главную страницу префикса
+                    window.location.href = WIC.APP_PREFIX + '/';                    
+                } else {
+                    $('#error-alert').text('Неверное имя пользователя или пароль').removeClass('d-none');
+                }
+            },
+            error: function() {
+                $('#error-alert').text('Ошибка сервера при авторизации').removeClass('d-none');
+            }
+        });
+    });
+</script>
+</body>
+</html>

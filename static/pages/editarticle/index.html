@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактирование статьи | Wiki</title>
+    <link href="/cdn/static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/cdn/static/libs/quill/quill.snow.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .editor-container { max-width: 900px; background: white; padding: 2.5rem; border-radius: 0.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .block-item { position: relative; border-left: 3px solid #0d6efd; padding-left: 15px; margin-bottom: 1.5rem; }
+        .btn-delete-block { position: absolute; right: 0; top: -10px; color: #dc3545; cursor: pointer; font-size: 0.85rem; text-decoration: none; }
+        .btn-delete-block:hover { text-decoration: underline; color: #a71d2a; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">📚 Punk Wiki</a>
+            <div>
+                <a class="btn btn-outline-light btn-sm me-2" id="btn-view-live" href="#" target="_blank">Предпросмотр</a>
+                <a class="btn btn-secondary btn-sm" href="/">На главную</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="editor-container m-auto mt-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h1 class="h3 mb-0">Редактор статьи: <span id="article-title-display" class="text-muted">Загрузка...</span></h1>
+                <span class="badge bg-primary" id="article-id-badge">ID: ...</span>
+            </div>
+            <p class="text-muted small">Каждое текстовое поле — это независимый блок контента (`article_blocks`). Пустые блоки при сохранении игнорируются.</p>
+            <hr>
+
+            <!-- Контейнер для блоков текста -->
+            <div id="blocks-wrapper">
+                <div class="p-3 text-center text-muted">Инициализация редактора...</div>
+            </div>
+
+            <!-- ЗОНА ПРИКРЕПЛЕННЫХ ФАЙЛОВ (ВСЕГДА В САМОМ НИЗУ СТАТЬИ) -->
+            <div class="mt-5 p-4 bg-light rounded border">
+                <h5 class="h6 fw-bold mb-3">📎 Прикрепленные файлы к статье</h5>
+                
+                <!-- Список файлов -->
+                <div class="list-group mb-3" id="files-list">
+                    <!-- Сюда jQuery вставит файлы -->
+                    <div class="p-2 text-muted small">Файлы отсутствуют.</div>
+                </div>
+
+                <!-- Поле загрузки нового файла -->
+                <div class="input-group input-group-sm max-width-400">
+                    <input type="file" class="form-control" id="input-article-file">
+                    <button class="btn btn-outline-primary" type="button" id="btn-upload-file">Загрузить файл</button>
+                </div>
+                <div class="form-text small">Максимальный размер файла — 20 МБ.</div>
+            </div>
+
+            <!-- Панель управления -->
+            <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                <button type="button" class="btn btn-outline-primary" id="btn-add-block">
+                    ➕ Добавить текстовый блок
+                </button>
+                <div>
+                    <div class="alert alert-success d-none d-inline-block py-1 px-3 mb-0 me-2" id="save-success">Сохранено!</div>
+                    <button type="button" class="btn btn-success px-4" id="btn-save-all">
+                        💾 Сохранить изменения
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/wiki/static/jslib/wikicore.js"></script>
+    <script src="/cdn/static/jslib/jquery-3.6.0.min.js"></script>
+    <script src="/cdn/static/jslib/bootstrap.5.3.0.bundle.min.js"></script>
+    <script src="/cdn/static/libs/quill/quill.js"></script>
+
+    <script>
+        // Используем ваш глобальный префикс WIC (если он не объявлен ранее Nginx, подстрахуемся)
+        if (typeof WIC === 'undefined') {
+            const currentPath = window.location.pathname;
+            const prefixEndIndex = currentPath.indexOf('/editarticle/');
+            window.WIC = {
+                APP_PREFIX: prefixEndIndex > 0 ? currentPath.substring(0, prefixEndIndex) : ''
+            };
+        }
+
+        // Извлекаем слаг статьи из URL
+        const pathParts = window.location.pathname.split('/editarticle/');
+        const articleSlug = pathParts[pathParts.length - 1].replace(/\/\$/, '');
+        console.log('слаг статьи = ' + articleSlug);
+
+        let articleId = null;
+        let art = null;
+
+        $(document).ready(function() {
+            if (!articleSlug) {
+                $('.editor-container').html('<div class="alert alert-danger">Критическая ошибка: слаг статьи не определен в URL.</div>');
+                return;
+            }
+
+            // Настраиваем ссылку предпросмотра с вашим префиксом
+            $('#btn-view-live').attr('href', WIC.APP_PREFIX + '/article/' + articleSlug);
+
+            // 1. Загружаем метаданные статьи
+            $.ajax({
+                url: WIC.APP_PREFIX + '/api/get/article?slug=' + articleSlug,
+                method: 'GET',
+                success: function(response) {
+                    if (response && response.length > 0) {
+                        console.log('получил метаданные статьи, начинаю вставку данных.');
+                        const article = response[0];
+                        console.log(article);
+                        art = article;
+                        articleId = article.id;
+                        
+                        $('#article-title-display').text(article.title);
+                        $('#article-id-badge').text('ID статьи: ' + articleId);
+                        
+                        // 2. Загружаем блоки контента
+                        loadBlocks();
+                        loadFilesList();
+                    } else {
+                        $('.editor-container').html('<div class="alert alert-danger">Ошибка: статья не найдена в базе данных.</div>');
+                    }
+                },
+                error: function() {
+                    alert('Не удалось связаться с API для инициализации статьи.');
+                }
+            });
+
+            function loadBlocks() {
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/get/article_blocks?article_id=' + articleId,
+                    method: 'GET',
+                    success: function(blocks) {
+                        console.log('получил блоки статьи, начинаю сборку.');
+                        $('#blocks-wrapper').empty();
+                        
+                        if (blocks && blocks.length > 0) {
+                            blocks.forEach(function(block) {
+                                addBlockToDOM(block.content);
+                            });
+                        } else {
+                            addBlockToDOM('');
+                        }
+                    },
+                    error: function() {
+                        $('#blocks-wrapper').html('<div class="alert alert-warning">Не удалось загрузить блоки контента. Вы можете создать новые.</div>');
+                        addBlockToDOM('');
+                    }
+                });
+            }
+
+            // ИСПРАВЛЕННАЯ ФУНКЦИЯ ОТРИСОВКИ БЛОКА ПОД QUILL
+            function addBlockToDOM(contentValue) {
+                // Создаем уникальный ID для каждого контейнера Quill, чтобы библиотека их различала
+                const uniqueId = 'editor-' + Math.random().toString(36).substr(2, 9);
+
+                const blockHtml = 
+                    '<div class="block-item mb-4">' +
+                        '<a href="#" class="btn-delete-block">❌ Удалить блок</a>' +
+                        '<div class="mb-2 bg-white">' +
+                            // Контейнер для самого редактора Quill
+                            '<div id="' + uniqueId + '" class="quill-editor-box">' + contentValue + '</div>' +
+                        '</div>' +
+                    '</div>';
+                
+                $('#blocks-wrapper').append(blockHtml);
+
+                // Сразу инициализируем Quill на этом новом элементе
+                const quill = new Quill('#' + uniqueId, {
+                    theme: 'snow',
+                    placeholder: 'Введите текст параграфа, списки или ссылки...',
+                    modules: {
+                        toolbar: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],        // Выделение текста
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],     // Списки
+                            ['link', 'clean']                                 // Ссылки и сброс форматирования
+                        ]
+                    }
+                });
+
+                // Сохраняем экземпляр Quill в DATA-атрибут элемента, чтобы потом легко забрать текст
+                $('#' + uniqueId).data('quill-instance', quill);
+            }
+
+            $('#btn-add-block').click(function() {
+                addBlockToDOM('');
+            });
+
+            // Корректная логика удаления блоков без синтаксических ошибок
+            $(document).on('click', '.btn-delete-block', function(e) {
+                e.preventDefault();
+                
+                if ($('.block-item').length > 1) {
+                    $(this).closest('.block-item').remove();
+                } else {
+                    $(this).closest('.block-item').find('.block-textarea').val('');
+                }
+            });
+
+            // Клик по кнопке "Сохранить изменения"
+            $('#btn-save-all').click(function() {
+                $('#save-success').addClass('d-none');
+                const blocksPayload = [];
+                
+                // Бежим по всем созданным контейнерам Quill
+                $('.quill-editor-box').each(function(index) {
+                    // Достаем сохраненный объект Quill из памяти jQuery
+                    const quill = $(this).data('quill-instance');
+                    if (quill) {
+                        // Получаем полноценный HTML код блока (со всеми жирными тегами, списками и ссылками)
+                        const htmlContent = quill.root.innerHTML.trim();
+                        
+                        // Если блок не пустой (Quill по умолчанию оставляет <p><br></p> в пустом поле)
+                        if (htmlContent !== '' && htmlContent !== '<p><br></p>') {
+                            blocksPayload.push({
+                                article_id: parseInt(articleId, 10),
+                                content: htmlContent, // Сохраняем HTML-разметку!
+                                ordinal_position: index + 1
+                            });
+                        }
+                    }
+                });
+
+                if (blocksPayload.length === 0) {
+                    alert('Нельзя сохранить пустую статью. Заполните хотя бы один блок.');
+                    return;
+                }
+
+                // Отправляем на бэкенд — логика полностью старая!
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/post/save_article_blocks',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(blocksPayload),
+                    success: function() {
+                        $('#save-success').removeClass('d-none');
+                        setTimeout(function() {
+                            $('#save-success').addClass('d-none');
+                        }, 2000);
+                    },
+                    error: function(xhr) {
+                        alert('Ошибка сохранения контента. Код: ' + xhr.status);
+                    }
+                });
+            });           
+            
+            
+
+            function loadFilesList() {
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/get/article_files?article_id=' + articleId,
+                    method: 'GET',
+                    success: function(files) {
+                        $('#files-list').empty();
+                        if (files && files.length > 0) {
+                            files.forEach(function(file) {
+                                // Путь скачивания идет через префикс Nginx к папке uploads
+                                const downloadUrl = WIC.APP_PREFIX + '/uploads/' + file.file_name;
+                                
+                                const fileHtml = `
+                                    <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                                        <div>
+                                            📄 <a href="${downloadUrl}" target="_blank" class="fw-bold text-decoration-none">${escapeHtml(file.original_name)}</a>
+                                            <span class="text-muted small ms-2">(${new Date(file.uploaded_at).toLocaleDateString('ru-RU')})</span>
+                                        </div>
+                                        <button class="btn btn-sm btn-link text-danger btn-delete-file py-0" data-id="${file.id}">Удалить</button>
+                                    </div>
+                                `;
+                                $('#files-list').append(fileHtml);
+                            });
+                        } else {
+                            $('#files-list').html('<div class="p-2 text-muted small">К этой статье еще не прикреплено ни одного файла.</div>');
+                        }
+                    }
+                });
+            }
+            
+            // Обработчик кнопки загрузки файла
+            $('#btn-upload-file').click(function() {
+                const fileInput = $('#input-article-file')[0];
+                if (fileInput.files.length === 0) {
+                    alert('Выберите файл для загрузки.');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('article_id', articleId);
+
+                $(this).prop('disabled', true).text('Загрузка...');
+
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/post/upload_file',
+                    method: 'POST',
+                    data: formData,
+                    processData: false, // Отключаем обработку данных jQuery
+                    contentType: false, // Отключаем установку заголовка jQuery (браузер поставит multipart/form-data сам)
+                    success: function() {
+                        $('#input-article-file').val(''); // Очищаем поле выбора
+                        loadFilesList(); // Перерисовываем список файлов
+                    },
+                    error: function(xhr) {
+                        alert('Ошибка при загрузке файла. Статус: ' + xhr.status);
+                    },
+                    complete: function() {
+                        $('#btn-upload-file').prop('disabled', false).text('Загрузить файл');
+                    }
+                });
+            });
+            
+            // Обработчик удаления файла
+            $(document).on('click', '.btn-delete-file', function(e) {
+                e.preventDefault();
+                if (!confirm('Вы действительно хотите удалить прикрепленный файл?')) return;
+
+                const fileId = $(this).data('id');
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/post/delete_article_files',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ id: fileId, article_id: articleId }),
+                    success: function() {
+                        loadFilesList();
+                    },
+                    error: function() {
+                        alert('Не удалось удалить файл из базы знаний.');
+                    }
+                });
+            });
+
+        });
+    </script>
+</body>
+</html>

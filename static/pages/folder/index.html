@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Раздел | Wiki</title>
+    <link href="/cdn/static/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .folder-header { background-color: #fff; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">📚 Punk Wiki</a>
+            <a class="btn btn-outline-light btn-sm" href="/">На главную</a>
+        </div>
+    </nav>
+
+    <div class="container mb-5">
+        <!-- Шапка папки -->
+        <div class="folder-header mb-4 d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h2 mb-1">📁 <span id="folder-title">Загрузка...</span></h1>
+                <p class="text-muted mb-0">Слаг раздела: <code id="folder-slug-display">...</code></p>
+            </div>
+            <!-- Кнопка создания, привязанная к этой папке -->
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createArticleModal">
+                ➕ Написать статью здесь
+            </button>
+        </div>
+
+        <div class="row">
+            <!-- Список статей папки -->
+            <div class="col-lg-12">
+                <h3 class="h5 mb-3 border-bottom pb-2">Статьи в этом разделе</h3>
+                <div class="list-group shadow-sm" id="folder-articles">
+                    <!-- Сюда jQuery вставит статьи -->
+                    <div class="p-3 text-center text-muted bg-white rounded">Загрузка содержимого...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно (Выбор папки больше не нужен, он скрыт!) -->
+    <div class="modal fade" id="createArticleModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Новая статья в раздел <span id="modal-folder-name"></span></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="create-article-form">
+            <div class="modal-body">
+              <!-- Скрытый ID текущей папки -->
+              <input type="hidden" id="art-folder-id">
+              
+              <div class="mb-3">
+                <label class="form-label">Название статьи</label>
+                <input type="text" class="form-control" id="art-title" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Уникальный URL-Slug</label>
+                <input type="text" class="form-control" id="art-slug" required>
+              </div>
+              <div class="alert alert-danger d-none" id="art-error"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+              <button type="submit" class="btn btn-success">Создать</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="/wiki/static/jslib/wikicore.js"></script>    
+    <script src="/cdn/static/jslib/jquery-3.6.0.min.js"></script>
+    <script src="/cdn/static/jslib/bootstrap.5.3.0.bundle.min.js"></script>
+    
+    <script>       
+        
+
+        $(document).ready(function() {
+            // Достаем слаг папки из текущего URL
+            const pathParts = window.location.pathname.split('/folder/');
+            const folderSlug = pathParts[pathParts.length - 1].replace(/\/\$/, '');
+
+            loadFolderContent();
+
+            function loadFolderContent() {
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/get/folder_content?slug=' + folderSlug,
+                    method: 'GET',
+                    success: function(data) {
+                        if (data && data.length > 0) {
+                            // Так как SQL возвращает строки, берем инфу о папке из первой строки
+                            const firstRow = data[0];
+                            $('#folder-title').text(firstRow.folder_name);
+                            $('#modal-folder-name').text(firstRow.folder_name);
+                            $('#folder-slug-display').text(firstRow.folder_slug);
+                            $('#art-folder-id').val(firstRow.folder_id); // Фиксируем ID папки!
+
+                            let html = '';
+                            data.forEach(function(row) {
+                                if (row.article_id) { // Проверяем, что в папке есть статьи (не null от LEFT JOIN)
+                                    const date = new Date(row.article_date).toLocaleString('ru-RU');
+                                    html += `
+                                        <a href="${WIC.APP_PREFIX}/article/${row.article_slug}" class="list-group-item list-group-item-action">
+                                            <div class="d-flex w-100 justify-content-between">
+                                                <h6 class="mb-1 fw-bold text-primary">📄 ${escapeHtml(row.article_title)}</h6>
+                                                <small class="text-muted">${date}</small>
+                                            </div>
+                                            <small class="text-muted">Slug: ${row.article_slug}</small>
+                                        </a>
+                                    `;
+                                }
+                            });
+
+                            if (html === '') {
+                                html = '<div class="p-4 text-center text-muted bg-white rounded border">В этом разделе еще нет статей. Будьте первым, кто её напишет!</div>';
+                            }
+                            $('#folder-articles').html(html);
+                        } else {
+                            $('#folder-title').text('Раздел не найден');
+                            $('#folder-articles').html('<div class="alert alert-danger">Ошибка: такого раздела не существует.</div>');
+                        }
+                    },
+                    error: function() {
+                        $('#folder-articles').html('<div class="alert alert-danger">Ошибка сервера при загрузке контента.</div>');
+                    }
+                });
+            }
+
+            // Обработчик отправки формы создания статьи
+            $('#create-article-form').submit(function(e) {
+                e.preventDefault();
+                $('#art-error').addClass('d-none');
+
+                const payload = {
+                    folder_id: parseInt($('#art-folder-id').val(), 10), // Жестко привязанный ID папки
+                    title: $('#art-title').val(),
+                    slug: $('#art-slug').val().toLowerCase().trim().replace(/[^a-z0-9-]/g, '-')
+                };
+
+                if (!payload.folder_id) {
+                    $('#art-error').text('Критическая ошибка: ID папки не определен. Перезагрузите страницу.').removeClass('d-none');
+                    return;
+                }
+
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/post/create_article',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(payload),
+                    success: function() {
+                        // Прячем модальное окно Bootstrap 5 перед редиректом
+                        const modalEl = document.getElementById('createArticleModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+
+                        // Перенаправляем автора в редактор созданной статьи
+                        window.location.href = WIC.APP_PREFIX + '/editarticle/' + payload.slug;
+                    },
+                    error: function(xhr) {
+                        if (xhr.status === 403) {
+                            $('#art-error').text('У вас нет прав на создание статей (роль Reader).').removeClass('d-none');
+                        } else {
+                            $('#art-error').text('Ошибка. Возможно, такой URL-слаг уже занят.').removeClass('d-none');
+                        }
+                    }
+                });
+            });
+            
+        });
+    </script>
+</body>
+</html>
