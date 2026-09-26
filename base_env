@@ -1,0 +1,4 @@
+PORT=
+API_DB={path to wikiapi container or domain/wiki/api/}
+APP_PREFIX={your prefix for this app, if needed}
+PROJECT_VERSION={auto version by deploy.ps1 script}
