@@ -183,12 +183,32 @@
                     modules: {
                         toolbar: [
                             [{ 'header': [1, 2, 3, false] }],
-                            ['bold', 'italic', 'underline', 'strike'],        // Выделение текста
-                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],     // Списки
-                            ['link', 'clean']                                 // Ссылки и сброс форматирования
+                            ['bold', 'italic', 'underline', 'strike'], 
+                            
+                            // --- НОВЫЕ ФУНКЦИИ, КОТОРЫЕ ВЫ МОЖЕТЕ ВКЛЮЧИТЬ: ---
+                            [{ 'color': [] }, { 'background': [] }],          // Выбор цвета текста и маркера выделения
+                            [{ 'align': [] }],                                // Выравнивание (лево, право, центр, ширина)
+                            ['blockquote', 'code-block'],                     // Цитаты и блоки кода
+                            
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],     
+                            ['link', 'image', 'video'],                       // Добавили картинки и видео
+                            ['clean']                                         
                         ]
                     }
                 });
+
+                // А вот так можно настроить, какие именно языки будут в выпадающем меню блока кода:
+                const syntaxModule = quill.getModule('syntax');
+                if (syntaxModule) {
+                    syntaxModule.options.languages = [
+                        { key: 'plain', label: 'Обычный текст' },
+                        { key: 'javascript', label: 'JavaScript' },
+                        { key: 'xml', label: 'HTML/XML' },
+                        { key: 'css', label: 'CSS' },
+                        { key: 'python', label: 'Python' },
+                        { key: 'sql', label: 'SQL' }
+                    ];
+                }
 
                 // Сохраняем экземпляр Quill в DATA-атрибут элемента, чтобы потом легко забрать текст
                 $('#' + uniqueId).data('quill-instance', quill);

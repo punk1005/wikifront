@@ -61,10 +61,16 @@
                 <label class="form-label">Название статьи</label>
                 <input type="text" class="form-control" id="art-title" required>
               </div>
-              <div class="mb-3">
-                <label class="form-label">Уникальный URL-Slug</label>
-                <input type="text" class="form-control" id="art-slug" required>
-              </div>
+                <div class="mb-3">
+                    <label for="art-slug" class="form-label">Уникальный URL-Slug</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="art-slug" placeholder="primer-nazvaniya-stati" required>
+                        <button class="btn btn-outline-secondary" type="button" id="btn-generate-slug" title="Сгенерировать на основе названия">
+                            🔄 Авто
+                        </button>
+                    </div>
+                    <div class="form-text small">Только латиница, цифры и дефис.</div>
+                </div>
               <div class="alert alert-danger d-none" id="art-error"></div>
             </div>
             <div class="modal-footer">
@@ -176,6 +182,73 @@
 
             $('.ln-to-home').attr('href', WIC.APP_PREFIX + '/');
             
+        });
+
+
+
+        //
+        // отдельная логика для атвоматического формирования SLUG на основе введенного назваия
+        //
+        $(document).ready(function() {
+            // Переменная-флаг: если пользователь правил слаг вручную, автогенерация при вводе названия отключается
+            let isSlugEditedManually = false;
+
+            // 1. Функция транслитерации русского текста в безопасный URL-slug
+            function transliterateToSlug(text) {
+                const rus = {
+                    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh', 
+                    'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o', 
+                    'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 
+                    'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+                };
+                
+                let slug = text.toLowerCase().trim();
+                let result = '';
+                
+                // Переводим каждый символ
+                for (let i = 0; i < slug.length; i++) {
+                    let char = slug[i];
+                    if (rus[char] !== undefined) {
+                        result += rus[char];
+                    } else {
+                        result += char;
+                    }
+                }
+                
+                // Очищаем от спецсимволов: заменяем пробелы и знаки препинания на дефисы, удаляем лишнее
+                return result
+                    .replace(/[^a-z0-9 -]/g, '') // Удаляем всё кроме латиницы, цифр, пробелов и дефисов
+                    .replace(/\s+/g, '-')        // Заменяем один или несколько пробелов на один дефис
+                    .replace(/-+/g, '-');        // Заменяем множественные дефисы на один
+            }
+
+            // 2. Автозаполнение на лету: срабатывает при вводе букв в поле "Название статьи"
+            $('#art-title').on('input', function() {
+                // Если пользователь еще не трогал поле слага руками — генерируем на лету
+                if (!isSlugEditedManually) {
+                    const titleText = $(this).val();
+                    $('#art-slug').val(transliterateToSlug(titleText));
+                }
+            });
+
+            // 3. Отслеживаем ручной ввод в поле слага: если пользователь кликнул и начал писать сам, отвязываем автомат
+            $('#art-slug').on('input', function() {
+                isSlugEditedManually = true;
+            });
+
+            // 4. Логика кнопки принудительной генерации "🔄 Авто"
+            $('#btn-generate-slug').click(function() {
+                const titleText = $('#art-title').val();
+                $('#art-slug').val(transliterateToSlug(titleText));
+                // Сбрасываем флаг ручного редактирования, если админ решил снова довериться автомату
+                isSlugEditedManually = false; 
+            });
+
+            // 5. Очищаем состояние флага при закрытии/открытии модального окна, чтобы при создании следующей статьи автомат снова работал
+            $('#createArticleModal').on('hidden.bs.modal', function () {
+                isSlugEditedManually = false;
+                $('#create-article-form')[0].reset();
+            });
         });
     </script>
 </body>

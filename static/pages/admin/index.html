@@ -27,12 +27,7 @@
 
     <!-- Верхняя панель -->
     <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
-        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="/wiki/admin/">Wiki Admin</a>
-        <div class="navbar-nav">
-            <div class="nav-item text-nowrap">
-                <a class="nav-link px-3 text-white" href="/">На сайт</a>
-            </div>
-        </div>
+        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" id="ln-to-home" href="#">Your at "Wiki Admin"</a>        
     </header>
 
     <div class="container-fluid">
@@ -183,19 +178,31 @@
                     </div>
                     <div class="mb-3">
                         <label for="new-role" class="form-label">Роль в системе</label>
-                        <select class="form-select" id="new-role" required>
-                        <option value="reader" selected>Reader (Только чтение)</option>
-                        <option value="writer">Writer (Создание статей)</option>
-                        <option value="moderator">Moderator (Управление контентом)</option>
-                        <option value="admin">Admin (Полный доступ)</option>
+                            <select class="form-select" id="new-role" required>
+                            <option value="reader" selected>Reader (Только чтение)</option>
+                            <option value="writer">Writer (Создание статей)</option>
+                            <option value="moderator">Moderator (Управление контентом)</option>
+                            <option value="admin">Admin (Полный доступ)</option>
                         </select>
                     </div>
-                    <div class="alert alert-danger d-none" id="create-error-alert"></div>
-                    <div class="alert alert-success d-none" id="create-success-alert">Пользователь успешно создан!</div>
+                        <div class="alert alert-danger d-none" id="create-error-alert"></div>
+                        <div class="alert alert-success d-none" id="create-success-alert">Пользователь успешно создан!</div>
                     </div>
                     <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn btn-success">Сохранить</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="submit" class="btn btn-success">Сохранить</button>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new-fullname" class="form-label">ФИО (Необязательно)</label>
+                        <input type="text" class="form-control" id="new-fullname" placeholder="Иванов Иван Иванович">
+                    </div>
+                    <div class="mb-3">
+                        <label for="new-phone" class="form-label">Телефон (Необязательно)</label>
+                        <input type="text" class="form-control" id="new-phone" placeholder="+7 (999) 000-00-00">
+                    </div>
+                    <div class="mb-3">
+                        <label for="new-position" class="form-label">Должность (Необязательно)</label>
+                        <input type="text" class="form-control" id="new-position" placeholder="DevOps Инженер">
                     </div>
                 </form>
                 </div>
@@ -224,6 +231,20 @@
                         <option value="admin">Admin (Полный доступ)</option>
                         </select>
                     </div>
+                    <div class="mb-3">
+                    <label for="edit-fullname" class="form-label">ФИО</label>
+                    <input type="text" class="form-control" id="edit-fullname">
+                    </div>
+                    <div class="mb-3">
+                    <label for="edit-phone" class="form-label">Телефон</label>
+                    <input type="text" class="form-control" id="edit-phone">
+                    </div>
+                    <div class="mb-3">
+                    <label for="edit-position" class="form-label">Должность</label>
+                    <input type="text" class="form-control" id="edit-position">
+                    </div>
+
+
                     <div class="alert alert-danger d-none" id="edit-error-alert"></div>
                     <div class="alert alert-success d-none" id="edit-success-alert">Роль успешно обновлена!</div>
                     </div>
@@ -277,6 +298,66 @@
 
     <!-- Пример логики взаимодействия с вашим /api/ роутом -->
     <script>
+        // Функция запроса к API базы данных через наш прокси в Go
+        function loadUsers() {                
+            const usersUrl = WIC.APP_PREFIX + '/api/get/getusers';
+
+            $.ajax({
+                url: usersUrl, 
+                method: 'GET',
+                success: function(users) {
+                    let html = '';
+                    
+                    if (!users || users.length === 0) {
+                        html = '<tr><td colspan="5" class="text-center text-muted">Пользователи не найдены</td></tr>';
+                    } else {
+                        users.forEach(function(user) {
+                            // Подсвечиваем разные роли красивыми Bootstrap-бэйджами
+                            let roleBadge = '<span class="badge bg-secondary">reader</span>';
+                            if (user.role === 'admin') roleBadge = '<span class="badge bg-danger">admin</span>';
+                            else if (user.role === 'moderator') roleBadge = '<span class="badge bg-warning text-dark">moderator</span>';
+                            else if (user.role === 'writer') roleBadge = '<span class="badge bg-success">writer</span>';
+                            
+                            const fullNameText = user.full_name ? `<br><small class="text-muted">${escapeHtml(user.full_name)}</small>` : '';
+                            const positionText = user.position ? ` <span class="badge bg-light text-dark border font-monospace">${escapeHtml(user.position)}</span>` : '';
+
+                            // Форматируем дату (из формата базы 2026-09-21T... в читаемый)
+                            const date = new Date(user.created_at).toLocaleString('ru-RU', {
+                                year: 'numeric', month: '2-digit', day: '2-digit',
+                                hour: '2-digit', minute: '2-digit'
+                            });
+
+                            html += `
+                                <tr>
+                                    <td>${user.id}</td>
+                                    <td>
+                                        <span class="fw-bold text-dark">${escapeHtml(user.username)}</span>${fullNameText}
+                                    </td>
+                                    <td>${roleBadge}${positionText}</td>
+                                    <td>${date}</td>
+                                    <td class="text-end">
+                                        <!-- Добавим в кнопку все данные профиля, чтобы их можно было редактировать -->
+                                        <button class="btn btn-sm btn-outline-secondary btn-edit" 
+                                                data-id="${user.id}" 
+                                                data-username="${escapeHtml(user.username)}"
+                                                data-fullname="${escapeHtml(user.full_name || '')}"
+                                                data-phone="${escapeHtml(user.phone || '')}"
+                                                data-position="${escapeHtml(user.position || '')}">
+                                            ⚙️ Управлять
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    }
+                    $('#users-table-body').html(html);
+                },
+                error: function(xhr) {
+                    alert('Ошибка загрузки пользователей с API_DB. Код ответа: ' + xhr.status);
+                }
+            });                
+        }
+
         $(document).ready(function() {
             // Загружаем список пользователей сразу при входе на страницу
             loadUsers();
@@ -284,67 +365,15 @@
             // Кнопка обновления данных
             $('#btn-refresh').click(function() {
                 loadUsers();
-            });
-
-            // Функция запроса к API базы данных через наш прокси в Go
-            function loadUsers() {                
-                const usersUrl = WIC.APP_PREFIX + '/api/get/getusers';
-
-                $.ajax({
-                    url: usersUrl, 
-                    method: 'GET',
-                    success: function(users) {
-                        let html = '';
-                        
-                        if (!users || users.length === 0) {
-                            html = '<tr><td colspan="5" class="text-center text-muted">Пользователи не найдены</td></tr>';
-                        } else {
-                            users.forEach(function(user) {
-                                // Подсвечиваем разные роли красивыми Bootstrap-бэйджами
-                                let roleBadge = '<span class="badge bg-secondary">reader</span>';
-                                if (user.role === 'admin') roleBadge = '<span class="badge bg-danger">admin</span>';
-                                else if (user.role === 'moderator') roleBadge = '<span class="badge bg-warning text-dark">moderator</span>';
-                                else if (user.role === 'writer') roleBadge = '<span class="badge bg-success">writer</span>';
-
-                                // Форматируем дату (из формата базы 2026-09-21T... в читаемый)
-                                const date = new Date(user.created_at).toLocaleString('ru-RU', {
-                                    year: 'numeric', month: '2-digit', day: '2-digit',
-                                    hour: '2-digit', minute: '2-digit'
-                                });
-
-                                html += `
-                                    <tr>
-                                        <td>${user.id}</td>
-                                        <td class="fw-bold">${escapeHtml(user.username)}</td>
-                                        <td>${roleBadge}</td>
-                                        <td>${date}</td>
-                                        <td class="text-end">
-                                            <button class="btn btn-sm btn-outline-secondary btn-edit" data-id="${user.id}" data-username="${escapeHtml(user.username)}">
-                                                ⚙️ Управлять
-                                            </button>
-                                        </td>
-                                    </tr>
-                                `;
-                            });
-                        }
-                        $('#users-table-body').html(html);
-                    },
-                    error: function(xhr) {
-                        alert('Ошибка загрузки пользователей с API_DB. Код ответа: ' + xhr.status);
-                    }
-                });                
-            }
-            // Вспомогательная функция экранирования XSS 
-            function escapeHtml(text) {
-                if (!text) return '';
-                return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-            }
+            });          
 
             // Хендлер для динамических кнопок в таблице
             $(document).on('click', '.btn-edit', function() {
                 const userId = $(this).data('id');
                 console.log('Редактируем пользователя с ID:', userId);
             });
+
+            $('#ln-to-home').attr("href", WIC.APP_PREFIX + '/');
         });
 
         $('#create-user-form').submit(function(e) {
@@ -355,7 +384,10 @@
             const payload = {
                 username: $('#new-username').val(),
                 password: $('#new-password').val(),
-                role: $('#new-role').val()
+                role: $('#new-role').val(),
+                full_name: $('#new-fullname').val() || null, // Отправляем null если пусто
+                phone: $('#new-phone').val() || null,
+                position: $('#new-position').val() || null
             };
 
             $.ajax({
@@ -385,16 +417,19 @@
         $(document).on('click', '.btn-edit', function() {
             const userId = $(this).data('id');
             const username = $(this).data('username');
+            const fullname = $(this).data('fullname');
+            const phone = $(this).data('phone');
+            const position = $(this).data('position');
             
-            // Подставляем данные в скрытые поля модального окна
             $('#edit-user-id').val(userId);
             $('#edit-username-display').text(username);
+            $('#edit-fullname').val(fullname);
+            $('#edit-phone').val(phone);
+            $('#edit-position').val(position);
             
-            // Сбрасываем алерты
             $('#edit-error-alert').addClass('d-none');
             $('#edit-success-alert').addClass('d-none');
             
-            // Показываем модальное окно изменения роли
             const modal = new bootstrap.Modal(document.getElementById('updateRoleModal'));
             modal.show();
         });
@@ -405,31 +440,41 @@
             $('#edit-error-alert').addClass('d-none');
             $('#edit-success-alert').addClass('d-none');
 
-            const payload = {
-                id: $('#edit-user-id').val(),
-                role: $('#edit-role').val()
+            const userId = $('#edit-user-id').val();
+            
+            const rolePayload = { id: userId, role: $('#edit-role').val() };
+            const profilePayload = {
+                user_id: parseInt(userId, 10),
+                full_name: $('#edit-fullname').val() || null,
+                phone: $('#edit-phone').val() || null,
+                position: $('#edit-position').val() || null
             };
 
+            // 1. Обновляем роль
             $.ajax({
-                url: WIC.APP_PREFIX+'/api/post/update_user_role',
+                url: WIC.APP_PREFIX + '/api/post/update_user_role',
                 method: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify(payload),
-                success: function(response) {
-                    $('#edit-success-alert').removeClass('d-none');
-                    
-                    // Через 1 секунду закрываем окно и обновляем таблицу
-                    setTimeout(function() {
-                        const modalElement = document.getElementById('updateRoleModal');
-                        const modal = bootstrap.Modal.getInstance(modalElement);
-                        modal.hide();
-                        $('#edit-success-alert').addClass('d-none');
-                        loadUsers(); // Перерисовываем таблицу с новыми ролями
-                    }, 1000);
+                data: JSON.stringify(rolePayload),
+                success: function() {
+                    // 2. Сразу же обновляем профиль
+                    $.ajax({
+                        url: WIC.APP_PREFIX + '/api/post/update_user_profile',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(profilePayload),
+                        success: function() {
+                            $('#edit-success-alert').removeClass('d-none');
+                            setTimeout(function() {
+                                const modal = bootstrap.Modal.getInstance(document.getElementById('updateRoleModal'));
+                                modal.hide();
+                                loadUsers();
+                            }, 1000);
+                        },
+                        error: function() { $('#edit-error-alert').text('Ошибка сохранения профиля').removeClass('d-none'); }
+                    });
                 },
-                error: function(xhr) {
-                    $('#edit-error-alert').text('Ошибка при изменении роли пользователя.').removeClass('d-none');
-                }
+                error: function() { $('#edit-error-alert').text('Ошибка изменения роли').removeClass('d-none'); }
             });
         });
 

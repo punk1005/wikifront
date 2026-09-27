@@ -32,7 +32,7 @@
     <!-- Навигация -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand" href="/">📚 Punk Wiki</a>
+            <a class="navbar-brand" id="ln-to-home" href="#">📚 Punk Wiki</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -45,7 +45,10 @@
                 </div>
                 <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link" href="/admin/">Панель управления</a>
+                        <a class="nav-link text-info" href="#" id="link-my-profile">👤 Мой профиль</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="ln-to-adminpanel" href="#">Панель управления</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link text-warning" href="#" id="btn-logout">Выйти</a>
@@ -58,14 +61,9 @@
     <!-- Шапка главной страницы -->
     <div class="container p-0">
         <div class="wiki-header text-center shadow">
-            <h1 class="display-4 fw-bold">Добро пожаловать в Базу Знаний</h1>
+            <h1 class="display-4 fw-bold">Добро пожаловать в Базу Знаний (?)</h1>
             <p class="lead">Находите инструкции, статьи и документацию по проектам</p>
-        </div>
-        <div class="mb-3" id="create-article-zone">
-            <button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#createArticleModal">
-                ✍️ Написать статью
-            </button>
-        </div>
+        </div> 
     </div>
 
     <!-- Основной контент -->
@@ -106,43 +104,6 @@
     </div>
 
     <!-- МОДАЛЬНЫЕ ОКНА -->
-    
-    <!-- Модальное окно создания статьи (заполнение метаданных) -->
-        <div class="modal fade" id="createArticleModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Новая статья</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form id="create-article-form">
-                    <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Название статьи</label>
-                        <input type="text" class="form-control" id="art-title" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Уникальный Slug (для URL)</label>
-                        <input type="text" class="form-control" id="art-slug" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Раздел / Папка</label>
-                        <select class="form-select" id="art-folder" required>
-                            <!-- Сюда JS динамически подставит список существующих папок -->
-                        </select>
-                    </div>
-                    <div class="alert alert-danger d-none" id="art-error"></div>
-                    </div>
-                    <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn btn-success">Создать и перейти к редактированию</button>
-                    </div>
-                </form>
-                </div>
-            </div>
-        </div>
-    
-
 
     <!-- Модальное окно глобального поиска -->
         <div class="modal fade" id="searchModal" tabindex="-1" aria-labelledby="searchModalLabel" aria-hidden="true">
@@ -167,6 +128,46 @@
             </div>
         </div>
         </div>    
+    
+        
+
+    <!-- МОДАЛЬНОЕ ОКНО ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ -->    
+        <div class="modal fade" id="myProfileModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Личный профиль: <span id="my-username-title" class="text-muted"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="my-profile-form">
+                <div class="modal-body">
+                <!-- Скрытый ID текущего юзера -->
+                <input type="hidden" id="my-user-id">
+                
+                <div class="mb-3">
+                    <label class="form-label">Ваше ФИО</label>
+                    <input type="text" class="form-control" id="my-fullname" placeholder="Введите ФИО">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Номер телефона</label>
+                    <input type="text" class="form-control" id="my-phone" placeholder="+7...">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Должность в компании</label>
+                    <input type="text" class="form-control" id="my-position" placeholder="Должность">
+                </div>
+                <div class="alert alert-danger d-none" id="my-prof-error"></div>
+                <div class="alert alert-success d-none" id="my-prof-success">Данные успешно обновлены!</div>
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+            </div>
+        </div>
+        </div>
+
 
     <!-- КОНЕЦ МОДАЛЬНЫЕ ОКНА -->
 
@@ -333,6 +334,66 @@
             });
         });
 
+        // Клик по меню "Мой профиль" — загружаем актуальные данные из сессии Go
+        $('#link-my-profile').click(function(e) {
+            e.preventDefault();
+            $('#my-prof-error').addClass('d-none');
+            $('#my-prof-success').addClass('d-none');
+
+            $.ajax({
+                url: WIC.APP_PREFIX + '/api/get/my_profile',
+                method: 'GET',
+                success: function(response) {
+                    // wikiapi возвращает массив строк
+                    if (response && response.length > 0) {
+                        const me = response[0];
+                        $('#my-user-id').val(me.id);
+                        $('#my-username-title').text(me.username);
+                        $('#my-fullname').val(me.full_name || '');
+                        $('#my-phone').val(me.phone || '');
+                        $('#my-position').val(me.position || '');
+
+                        // Открываем окно
+                        const modal = new bootstrap.Modal(document.getElementById('myProfileModal'));
+                        modal.show();
+                    }
+                },
+                error: function() { alert('Не удалось загрузить данные профиля.'); }
+            });
+        });
+
+        // Отправка формы редактирования «Моего профиля»
+        $('#my-profile-form').submit(function(e) {
+            e.preventDefault();
+            $('#my-prof-error').addClass('d-none');
+            $('#my-prof-success').addClass('d-none');
+
+            const payload = {
+                user_id: parseInt($('#my-user-id').val(), 10),
+                full_name: $('#my-fullname').val() || null,
+                phone: $('#my-phone').val() || null,
+                position: $('#my-position').val() || null
+            };
+
+            $.ajax({
+                url: WIC.APP_PREFIX + '/api/post/update_user_profile',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function() {
+                    $('#my-prof-success').removeClass('d-none');
+                    setTimeout(function() {
+                        const modalEl = document.getElementById('myProfileModal');
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                    }, 1000);
+                },
+                error: function() {
+                    $('#my-prof-error').text('Не удалось обновить профиль.').removeClass('d-none');
+                }
+            });
+        });
+
         // Логика разлогина
         $('#btn-logout').click(function(e) {
             e.preventDefault();
@@ -351,6 +412,14 @@
                 }
             });
         });
+
+        // выставление корректных линков навигации
+        $(document).ready(function() {
+            $('#ln-to-home').attr('href', WIC.APP_PREFIX + '/');
+            $('#ln-to-adminpanel').attr('href', WIC.APP_PREFIX + '/admin/');
+                        
+        });
+
     </script>
 </body>
 </html>

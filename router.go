@@ -18,6 +18,7 @@ import (
 	"fmt"	
 	"crypto/rand"
 	"encoding/hex"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 var StaticFS embed.FS
@@ -221,6 +222,84 @@ func NewRouter(cfg *Config) http.Handler {
 			proxy.ServeHTTP(w, r)
 			return
 		}
+		// 2.9.1 ХЭНДЛЕР ИЗМЕНЕНИЯ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
+		if path == "/api/post/update_user_profile" && r.Method == http.MethodPost {
+			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
+			if user == nil {
+				http.Error(w, "403 Forbidden: Отсутствует авторизация", http.StatusForbidden)
+				return
+			}
+
+			// 1. Читаем сырые байты JSON, пришедшие от фронтенда
+			reqBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				log.Printf("[ERROR] Не удалось прочитать тело запроса: %v", err)
+				http.Error(w, "400 Bad Request", http.StatusBadRequest)
+				return
+			}
+
+			// Выводим в лог сервера то, что РЕАЛЬНО прислал фронтенд
+			log.Printf("[PROFILE LOG] Входящий сырой JSON от фронта: %s", string(reqBytes))
+
+			var payload map[string]interface{}
+			if err := json.Unmarshal(reqBytes, &payload); err != nil {
+				log.Printf("[ERROR] Ошибка unmarshal во WIKIFRONT: %v", err)
+				http.Error(w, "400 Bad Request", http.StatusBadRequest)
+				return
+			}
+
+			// Выводим в лог распарсенную мапу, чтобы убедиться в наличии user_id
+			log.Printf("[PROFILE LOG] Распарсенная мапа: %+v", payload)
+
+			// 2. Извлекаем ID целевого пользователя для проверки прав
+			targetUserIDFloat, ok := payload["user_id"].(float64)
+			if !ok {
+				log.Printf("[WARNING] Ключ 'user_id' отсутствует в JSON или имеет неверный тип данных!")
+				http.Error(w, "400 Bad Request: Отсутствует user_id", http.StatusBadRequest)
+				return
+			}
+			targetUserID := int(targetUserIDFloat)
+
+			// 3. ПРОВЕРКА РОЛЕЙ: Обычный юзер может править только свой ID, Админ — любой
+			if user.Role != "admin" && user.ID != targetUserID {
+				log.Printf("[SECURITY] Пользователь %s (ID: %d) пытался изменить чужой профиль (ID: %d)", user.Username, user.ID, targetUserID)
+				http.Error(w, "403 Forbidden: Вы можете редактировать только свой профиль", http.StatusForbidden)
+				return
+			}
+
+			log.Printf("[PROFILE] Пользователь %s успешно прошел валидацию для изменения профиля ID: %d", user.Username, targetUserID)
+
+			// Восстанавливаем тело запроса в исходном чистом виде для передачи в wikiapi
+			r.Body = io.NopCloser(bytes.NewBuffer(reqBytes))
+			r.ContentLength = int64(len(reqBytes))
+
+			// 4. Чистый прокси-транзит
+			proxy.ModifyResponse = nil 
+			r.URL.Path = strings.TrimPrefix(path, "/api") // Путь превратится в POST /post/update_user_profile
+			proxy.ServeHTTP(w, r)
+			return
+		}
+		// 2.9.2 ХЭНДЛЕР ПОЛУЧЕНИЯ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
+		if path == "/api/get/my_profile" && r.Method == http.MethodGet {
+			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
+			if user == nil {
+				http.Error(w, "401 Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// Отрезаем префикс /api для отправки в wikiapi
+			r.URL.Path = strings.TrimPrefix(path, "/api")
+			
+			// Безопасно формируем параметры строки запроса (?user_id=...)
+			q := r.URL.Query()
+			q.Set("user_id", fmt.Sprintf("%d", user.ID))
+			r.URL.RawQuery = q.Encode()
+
+			// Проксируем запрос в wikiapi
+			proxy.ModifyResponse = nil 
+			proxy.ServeHTTP(w, r)
+			return
+		}
 
 		// 2.10 ХЕНДЛЕР ПОЛУЧЕНИЯ СПИСКА ПАПОК (ДЛЯ АДМИНА И МОДЕРАТОРА)
 		if path == "/api/get/folders" && r.Method == http.MethodGet {
@@ -346,7 +425,7 @@ func NewRouter(cfg *Config) http.Handler {
 		if path == "/api/post/save_article_blocks" && r.Method == http.MethodPost {
 			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
 			if user == nil || user.Role == "reader" {
-				http.Error(w, "403 Forbidden", http.StatusForbidden)
+				http.Error(w, "403 Forbidden: Недостаточно прав", http.StatusForbidden)
 				return
 			}
 
@@ -355,21 +434,34 @@ func NewRouter(cfg *Config) http.Handler {
 				var blocksArray []map[string]interface{}
 				if err := json.Unmarshal(reqBytes, &blocksArray); err == nil && len(blocksArray) > 0 {
 					
-					// Для проверки авторства вытащим slug, который фронтенд теперь передаст в первом элементе
 					articleSlug, _ := blocksArray[0]["article_slug"].(string)
 					articleID := blocksArray[0]["article_id"]
 
-					// ПРОВЕРКА АВТОРСТВА:
 					if !isUserAllowedToModifyArticle(user, articleSlug, Cfg.APIDB) {
 						http.Error(w, "403 Forbidden: Вы можете редактировать только собственные статьи", http.StatusForbidden)
 						return
 					}
 
-					// Чистим наш технический параметр перед отправкой в wikiapi, чтобы база не ругалась
+					// ИНИЦИАЛИЗИРУЕМ САНИТАРНЫЙ ФИЛЬТР HTML
+					// UGCPolicy разрешает базовое форматирование (ссылки, абзацы, списки), 
+					// но намертво вырезает <script>, <iframe>, onclick, onerror и javascript: ссылки.
+					p := bluemonday.UGCPolicy()
+
+					// Бежим циклом по всем блокам, которые прислал Quill
 					for _, block := range blocksArray {
-						delete(block, "article_slug")
+						delete(block, "article_slug") // Удаляем наш технический параметр
+
+						// Достаем сырой HTML контент из блока текста
+						if rawContent, ok := block["content"].(string); ok {
+							// ОЧИЩАЕМ HTML НА ЛЕТУ ПЕРЕД ЗАПИСЬЮ В БД!
+							sanitizedContent := p.Sanitize(rawContent)
+							
+							// Записываем очищенный безопасный HTML обратно в мапу
+							block["content"] = sanitizedContent
+						}
 					}
 
+					// Пересобираем JSON с уже очищенными и безопасными блоками
 					jsonArrayBytes, _ := json.Marshal(blocksArray)
 					wrappedPayload := map[string]interface{}{
 						"article_id":  articleID,
@@ -594,10 +686,60 @@ func NewRouter(cfg *Config) http.Handler {
 		if path == "/api/post/hard_delete_article" && r.Method == http.MethodPost {
 			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
 			if user == nil || (user.Role != "admin" && user.Role != "moderator") {
-				http.Error(w, "403 Forbidden: Только администраторы могут удалять статьи окончательно", http.StatusForbidden)
+				http.Error(w, "403 Forbidden: Недостаточно прав", http.StatusForbidden)
 				return
 			}
-			log.Printf("[ADMIN] %s производит ПОЛНОЕ УДАЛЕНИЕ статьи из базы данных", user.Username)
+
+			reqBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "400 Bad Request", http.StatusBadRequest)
+				return
+			}
+
+			var payload map[string]interface{}
+			if err := json.Unmarshal(reqBytes, &payload); err == nil {
+				articleIDFloat, ok := payload["id"].(float64)
+				if ok {
+					articleID := int(articleIDFloat)
+
+					// === ИСПОЛЬЗУЕМ ВАШ СУЩЕСТВУЮЩИЙ ЭНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ФАЙЛОВ ===
+					apiURL := fmt.Sprintf("%s/get/article_files?article_id=%d", Cfg.APIDB, articleID)
+					apiResp, errGet := http.Get(apiURL)
+					
+					if errGet == nil && apiResp.StatusCode == http.StatusOK {
+						apiBody, _ := io.ReadAll(apiResp.Body)
+						apiResp.Body.Close()
+
+						var filesResult []map[string]interface{}
+						if errJson := json.Unmarshal(apiBody, &filesResult); errJson == nil && len(filesResult) > 0 {
+							
+							// ЦИКЛОМ УДАЛЯЕМ ФАЙЛЫ С ДИСКА
+							for _, fileMap := range filesResult {
+								if fileName, exists := fileMap["file_name"].(string); exists && fileName != "" {
+									safeFileName := filepath.Base(fileName)
+									filePath := filepath.Join("./uploads", safeFileName)
+
+									if _, errStat := os.Stat(filePath); errStat == nil {
+										errRemove := os.Remove(filePath)
+										if errRemove != nil {
+											log.Printf("[ERROR] Не удалось удалить файл %s: %v", safeFileName, errRemove)
+										} else {
+											log.Printf("[FILE CLEANUP] Файл %s успешно удален с диска перед уничтожением статьи ID %d", safeFileName, articleID)
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			log.Printf("[ADMIN] %s производит ПОЛНОЕ УДАЛЕНИЕ статьи ID %v из системы", user.Username, payload["id"])
+
+			// Восстанавливаем тело запроса и проксируем команду удаления строки из БД
+			r.Body = io.NopCloser(bytes.NewBuffer(reqBytes))
+			r.ContentLength = int64(len(reqBytes))
+
 			proxy.ModifyResponse = nil 
 			r.URL.Path = strings.TrimPrefix(path, "/api")
 			proxy.ServeHTTP(w, r)
