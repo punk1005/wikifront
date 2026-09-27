@@ -58,11 +58,16 @@
                 <div class="form-text small">Максимальный размер файла — 20 МБ.</div>
             </div>
 
-            <!-- Панель управления -->
+            <!--  блок кнопок управления  -->
             <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
-                <button type="button" class="btn btn-outline-primary" id="btn-add-block">
-                    ➕ Добавить текстовый блок
-                </button>
+                <div>
+                    <button type="button" class="btn btn-outline-primary me-2" id="btn-add-block">
+                        ➕ Добавить текстовый блок
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" id="btn-delete-article">
+                        🗑️ Удалить статью
+                    </button>
+                </div>
                 <div>
                     <div class="alert alert-success d-none d-inline-block py-1 px-3 mb-0 me-2" id="save-success">Сохранено!</div>
                     <button type="button" class="btn btn-success px-4" id="btn-save-all">
@@ -221,6 +226,7 @@
                         if (htmlContent !== '' && htmlContent !== '<p><br></p>') {
                             blocksPayload.push({
                                 article_id: parseInt(articleId, 10),
+                                article_slug: articleSlug,
                                 content: htmlContent, // Сохраняем HTML-разметку!
                                 ordinal_position: index + 1
                             });
@@ -331,6 +337,29 @@
                     },
                     error: function() {
                         alert('Не удалось удалить файл из базы знаний.');
+                    }
+                });
+            });
+
+            // Обработчик мягкого удаления статьи
+            $('#btn-delete-article').click(function() {
+                if (!confirm('Вы действительно хотите пометить эту статью на удаление? Она исчезнет из общего доступа.')) return;
+
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/post/pending_delete_article',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ slug: articleSlug }),
+                    success: function() {
+                        alert('Статья успешно помечена на удаление.');
+                        window.location.href = WIC.APP_PREFIX + '/'; // Перенаправляем на главную
+                    },
+                    error: function(xhr) {
+                        if (xhr.status === 403) {
+                            alert('Ошибка: Вы можете удалять только свои собственные статьи!');
+                        } else {
+                            alert('Не удалось удалить статью. Ошибка сервера.');
+                        }
                     }
                 });
             });

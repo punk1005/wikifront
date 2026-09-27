@@ -37,11 +37,16 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <!-- Кнопка вызова поиска -->
+                <div class="d-flex ms-auto me-3">
+                    <button class="btn btn-outline-light btn-sm px-4" data-bs-toggle="modal" data-bs-target="#searchModal">
+                        🔍 Поиск по базе знаний...
+                    </button>
+                </div>
+                <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link" href="/admin/">Панель управления</a>
                     </li>
-                    <!-- Кнопка Выйти -->
                     <li class="nav-item">
                         <a class="nav-link text-warning" href="#" id="btn-logout">Выйти</a>
                     </li>
@@ -138,6 +143,31 @@
         </div>
     
 
+
+    <!-- Модальное окно глобального поиска -->
+        <div class="modal fade" id="searchModal" tabindex="-1" aria-labelledby="searchModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title" id="searchModalLabel">🔎 Глобальный поиск</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Поле ввода поискового запроса -->
+                <div class="input-group mb-4">
+                    <input type="text" class="form-control form-control-lg" id="search-input" placeholder="Введите ключевое слово для поиска..." autocomplete="off">
+                    <button class="btn btn-primary px-4" type="button" id="btn-do-search">Найти</button>
+                </div>
+
+                <!-- Контейнер для результатов выдачи -->
+                <div class="list-group" id="search-results-container">
+                    <div class="p-4 text-center text-muted">Введите запрос, чтобы начать поиск по названиям и тексту статей.</div>
+                </div>
+            </div>
+            </div>
+        </div>
+        </div>    
+
     <!-- КОНЕЦ МОДАЛЬНЫЕ ОКНА -->
 
     <script src="/wiki/static/jslib/wikicore.js"></script>
@@ -204,6 +234,65 @@
                     },
                     error: function() {
                         console.log('Не удалось загрузить последние статьи.');
+                    }
+                });
+            }
+
+            // Автоматический фокус на поле ввода при открытии модального окна
+            $('#searchModal').on('shown.bs.modal', function () {
+                $('#search-input').focus();
+            });
+
+            // Триггер поиска по нажатию кнопки Enter в поле ввода
+            $('#search-input').keypress(function(e) {
+                if (e.which == 13) { // Код клавиши Enter
+                    executeSearch();
+                }
+            });
+
+            // Клик по кнопке "Найти"
+            $('#btn-do-search').click(executeSearch);
+
+            function executeSearch() {
+                const queryText = $('#search-input').val().trim();
+                
+                if (queryText.length < 2) {
+                    $('#search-results-container').html('<div class="p-3 text-center text-warning fw-bold">Запрос слишком короткий (минимум 2 символа).</div>');
+                    return;
+                }
+
+                $('#search-results-container').html('<div class="p-4 text-center text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div> Ищем совпадения в базе знаний...</div>');
+
+                $.ajax({
+                    url: WIC.APP_PREFIX + '/api/get/search_articles?query=' + encodeURIComponent(queryText),
+                    method: 'GET',
+                    success: function(articles) {
+                        $('#search-results-container').empty();
+                        
+                        if (!articles || articles.length === 0) {
+                            $('#search-results-container').html('<div class="p-4 text-center text-muted">Ничего не найдено. Попробуйте изменить формулировку запроса.</div>');
+                            return;
+                        }
+
+                        let html = '';
+                        articles.forEach(function(article) {
+                            html += `
+                                <a href="${WIC.APP_PREFIX}/article/${article.slug}" class="list-group-item list-group-item-action p-3">
+                                    <div class="d-flex w-100 justify-content-between align-items-center">
+                                        <h6 class="mb-1 fw-bold text-primary">📄 ${escapeHtml(article.title)}</h6>
+                                        <span class="badge bg-light text-dark border">📁 ${escapeHtml(article.folder_name)}</span>
+                                    </div>
+                                    <div class="d-flex w-100 justify-content-between align-items-center mt-2">
+                                        <small class="text-muted">Автор: <b>${escapeHtml(article.author)}</b></small>
+                                        <small class="text-primary small text-decoration-underline">Открыть статью →</small>
+                                    </div>
+                                </a>
+                            `;
+                        });
+                        $('#search-results-container').html(html);
+                    },
+                    error: function() {
+                        $('#search-results-container').html('<div class="alert alert-danger m-2">Ошибка при выполнении поискового запроса на сервере.</div>');
                     }
                 });
             }

@@ -239,7 +239,8 @@ func NewRouter(cfg *Config) http.Handler {
 		// 2.11 ХЕНДЛЕР СОЗДАНИЯ ПАПКИ (С АВТОПОДСТАНОВКОЙ ID АВТОРА ИЗ СЕССИИ)
 		if path == "/api/post/create_folder" && r.Method == http.MethodPost {
 			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
-			if user == nil || (user.Role != "admin" && user.Role != "moderator" && user.Role != "writer") {
+			// ИСКЛЮЧИЛИ WRITER: теперь только admin и moderator
+			if user == nil || (user.Role != "admin" && user.Role != "moderator") {
 				http.Error(w, "403 Forbidden: Создавать разделы могут только администраторы и модераторы", http.StatusForbidden)
 				return
 			}
@@ -345,31 +346,36 @@ func NewRouter(cfg *Config) http.Handler {
 		if path == "/api/post/save_article_blocks" && r.Method == http.MethodPost {
 			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
 			if user == nil || user.Role == "reader" {
-				http.Error(w, "403 Forbidden: Недостаточно прав для редактирования контента", http.StatusForbidden)
+				http.Error(w, "403 Forbidden", http.StatusForbidden)
 				return
 			}
 
-			// Читаем массив блоков, пришедший от фронтенда
 			reqBytes, err := io.ReadAll(r.Body)
 			if err == nil {
 				var blocksArray []map[string]interface{}
 				if err := json.Unmarshal(reqBytes, &blocksArray); err == nil && len(blocksArray) > 0 {
 					
-					// Вытаскиваем ID статьи из первого блока, чтобы wikiapi знал, чьи блоки удалять
+					// Для проверки авторства вытащим slug, который фронтенд теперь передаст в первом элементе
+					articleSlug, _ := blocksArray[0]["article_slug"].(string)
 					articleID := blocksArray[0]["article_id"]
 
-					// Переводим массив обратно в JSON-строку, чтобы передать как текст для PostgreSQL
-					jsonArrayBytes, _ := json.Marshal(blocksArray)
-
-					// Формируем плоскую мапу map[string]any, которую так ждет wikiapi
-					wrappedPayload := map[string]interface{}{
-						"article_id":  articleID,
-						"blocks_json": string(jsonArrayBytes), // Передаем как валидную JSON-строку
+					// ПРОВЕРКА АВТОРСТВА:
+					if !isUserAllowedToModifyArticle(user, articleSlug, Cfg.APIDB) {
+						http.Error(w, "403 Forbidden: Вы можете редактировать только собственные статьи", http.StatusForbidden)
+						return
 					}
 
-					log.Printf("[EDITOR] Пользователь %s сохраняет контент статьи ID: %v (%d блоков)", user.Username, articleID, len(blocksArray))
+					// Чистим наш технический параметр перед отправкой в wikiapi, чтобы база не ругалась
+					for _, block := range blocksArray {
+						delete(block, "article_slug")
+					}
 
-					// Перезаписываем Body запроса для wikiapi
+					jsonArrayBytes, _ := json.Marshal(blocksArray)
+					wrappedPayload := map[string]interface{}{
+						"article_id":  articleID,
+						"blocks_json": string(jsonArrayBytes),
+					}
+
 					newReqBytes, _ := json.Marshal(wrappedPayload)
 					r.Body = io.NopCloser(bytes.NewBuffer(newReqBytes))
 					r.ContentLength = int64(len(newReqBytes))
@@ -377,6 +383,43 @@ func NewRouter(cfg *Config) http.Handler {
 			}
 
 			proxy.ModifyResponse = nil 
+			r.URL.Path = strings.TrimPrefix(path, "/api")
+			proxy.ServeHTTP(w, r)
+			return
+		}
+
+		// 2.18 МЯГКОЕ УДАЛЕНИЕ СТАТЬИ
+		if path == "/api/post/pending_delete_article" && r.Method == http.MethodPost {
+			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
+			if user == nil || user.Role == "reader" {
+				http.Error(w, "403 Forbidden", http.StatusForbidden)
+				return
+			}
+
+			reqBytes, err := io.ReadAll(r.Body)
+			if err == nil {
+				var payload map[string]string
+				if err := json.Unmarshal(reqBytes, &payload); err == nil {
+					slug := payload["slug"]
+
+					// Проверяем, имеет ли право данный юзер удалять её (свой-чужой)
+					if !isUserAllowedToModifyArticle(user, slug, Cfg.APIDB) {
+						http.Error(w, "403 Forbidden: Вы можете удалять только свои статьи", http.StatusForbidden)
+						return
+					}
+
+					// Добавляем флаги для dologin-подобного исполнения SQL
+					isStaff := (user.Role == "admin" || user.Role == "moderator")
+					payload["user_id"] = fmt.Sprintf("%d", user.ID)
+					payload["is_staff"] = fmt.Sprintf("%t", isStaff)
+
+					newReqBytes, _ := json.Marshal(payload)
+					r.Body = io.NopCloser(bytes.NewBuffer(newReqBytes))
+					r.ContentLength = int64(len(newReqBytes))
+				}
+			}
+
+			proxy.ModifyResponse = nil
 			r.URL.Path = strings.TrimPrefix(path, "/api")
 			proxy.ServeHTTP(w, r)
 			return
@@ -534,6 +577,55 @@ func NewRouter(cfg *Config) http.Handler {
 			return
 		}
 
+		// 2.200.1 ПОЛУЧЕНИЕ СПИСКА СТАТЕЙ, ПОМЕЧЕННЫХ НА УДАЛЕНИЕ (ДЛЯ АДМИНА И МОДЕРАТОРА)
+		if path == "/api/get/deleted_articles" && r.Method == http.MethodGet {
+			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
+			if user == nil || (user.Role != "admin" && user.Role != "moderator") {
+				http.Error(w, "403 Forbidden: Недостаточно прав", http.StatusForbidden)
+				return
+			}
+			proxy.ModifyResponse = nil 
+			r.URL.Path = strings.TrimPrefix(path, "/api")
+			proxy.ServeHTTP(w, r)
+			return
+		}
+
+		// 2.200.2 ПОЛНОЕ УДАЛЕНИЕ СТАТЬИ ИЗ СИСТЕМЫ (ТОЛЬКО ДЛЯ АДМИНА И МОДЕРАТОРА)
+		if path == "/api/post/hard_delete_article" && r.Method == http.MethodPost {
+			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
+			if user == nil || (user.Role != "admin" && user.Role != "moderator") {
+				http.Error(w, "403 Forbidden: Только администраторы могут удалять статьи окончательно", http.StatusForbidden)
+				return
+			}
+			log.Printf("[ADMIN] %s производит ПОЛНОЕ УДАЛЕНИЕ статьи из базы данных", user.Username)
+			proxy.ModifyResponse = nil 
+			r.URL.Path = strings.TrimPrefix(path, "/api")
+			proxy.ServeHTTP(w, r)
+			return
+		}
+
+		// 2.200.3 ВОССТАНОВЛЕНИЕ СТАТЬИ ИЗ БЭКЛОГА (ТОЛЬКО ДЛЯ АДМИНА И МОДЕРАТОРА)
+		if path == "/api/post/restore_article" && r.Method == http.MethodPost {
+			user, _ := r.Context().Value(UserContextKey).(*UserInfo)
+			if user == nil || (user.Role != "admin" && user.Role != "moderator") {
+				http.Error(w, "403 Forbidden: Недостаточно прав", http.StatusForbidden)
+				return
+			}
+			proxy.ModifyResponse = nil 
+			r.URL.Path = strings.TrimPrefix(path, "/api")
+			proxy.ServeHTTP(w, r)
+			return
+		}
+
+		// 2.300.1 ГЛОБАЛЬНЫЙ ПОИСК ПО БАЗЕ ЗНАНИЙ (ДОСТУПЕН ВСЕМ АВТОРИЗОВАННЫМ)
+		if path == "/api/get/search_articles" && r.Method == http.MethodGet {
+			// Достаточно общей авторизации от глобальной middleware
+			proxy.ModifyResponse = nil 
+			r.URL.Path = strings.TrimPrefix(path, "/api")
+			proxy.ServeHTTP(w, r)
+			return
+		}
+
 
 		// 
 		//    END FILES POINTS
@@ -563,7 +655,7 @@ func NewRouter(cfg *Config) http.Handler {
 			MW_Logger(MW_Article(serveHTML("static/pages/article/index.html"))).ServeHTTP(w, r)
 
 		case strings.HasPrefix(path, "/editarticle/"):
-			MW_Logger(MW_EditArticle(serveHTML("static/pages/editarticle/index.html"))).ServeHTTP(w, r)
+			editArticleCase(w, r, path, serveHTML)
 		
 		case strings.HasPrefix(path, "/folder/"):
 			// Отдаем тот же шаблон папки (фронтенд сам заберет slug из URL)
@@ -576,4 +668,65 @@ func NewRouter(cfg *Config) http.Handler {
 
 	// Оборачиваем весь наш роутер в глобальную middleware проверки сессий
 	return MW_AuthRequired(mux)
+}
+
+// Проверяет, может ли пользователь редактировать/удалять статью по ее слагу
+func isUserAllowedToModifyArticle(user *UserInfo, articleSlug string, apiDB string) bool {
+	// Администраторы и модераторы могут править ВСЁ
+	if user.Role == "admin" || user.Role == "moderator" {
+		return true
+	}
+	// Читатели не могут править ничего
+	if user.Role == "reader" {
+		return false
+	}
+
+	// Если пользователь - writer, нужно проверить авторство статьи через wikiapi
+	apiURL := fmt.Sprintf("%s/get/article_author?slug=%s", apiDB, articleSlug)
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var articles []map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &articles); err == nil && len(articles) > 0 {
+		// Приводим author_id из float64 (стандарт для json чисел) к int
+		if authorIDFloat, ok := articles[0]["author_id"].(float64); ok {
+			return int(authorIDFloat) == user.ID
+		}
+	}
+
+	return false
+}
+
+// editArticleCase обрабатывает роутинг страницы редактирования статьи с проверкой прав доступа
+func editArticleCase(w http.ResponseWriter, r *http.Request, path string, serveHTML func(string) http.HandlerFunc) {
+	// 1. Вырезаем slug статьи из URL
+	slug := strings.TrimPrefix(path, "/editarticle/")
+	slug = strings.TrimSuffix(slug, "/") // Очищаем слэш на конце, если он есть
+
+	// 2. Достаем пользователя из контекста, который заполнила MW_AuthRequired
+	user, _ := r.Context().Value(UserContextKey).(*UserInfo)
+	
+	// 3. Жесткий фильтр ролей: гость или reader не пройдут
+	if user == nil || user.Role == "reader" {
+		http.Error(w, "403 Forbidden: Недостаточно прав", http.StatusForbidden)
+		return
+	}
+
+	// 4. Проверка авторства статьи ДО отдачи HTML страницы
+	if !isUserAllowedToModifyArticle(user, slug, Cfg.APIDB) {
+		log.Printf("[SECURITY] Пользователь %s (роль %s) заблокирован при попытке открыть чужой редактор: /editarticle/%s", user.Username, user.Role, slug)
+		http.Error(w, "403 Forbidden: Вы можете редактировать только собственные статьи", http.StatusForbidden)
+		return
+	}
+
+	// 5. Если проверка пройдена, оборачиваем в MW-заглушки и отдаем фронтенд
+	MW_Logger(MW_EditArticle(serveHTML("static/pages/editarticle/index.html"))).ServeHTTP(w, r)
 }

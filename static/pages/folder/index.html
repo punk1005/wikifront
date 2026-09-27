@@ -14,8 +14,8 @@
 
     <nav class="navbar navbar-dark bg-dark mb-4">
         <div class="container">
-            <a class="navbar-brand" href="/">📚 Punk Wiki</a>
-            <a class="btn btn-outline-light btn-sm" href="/">На главную</a>
+            <a class="navbar-brand ln-to-home">📚 Punk Wiki</a>
+            <a class="btn btn-outline-light btn-sm ln-to-home">На главную</a>
         </div>
     </nav>
 
@@ -173,6 +173,8 @@
                     }
                 });
             });
+
+            $('.ln-to-home').attr('href', WIC.APP_PREFIX + '/');
             
         });
     </script>

@@ -128,6 +128,36 @@
                     </div>
                 </div>
 
+                <!-- ================= СЕКЦИЯ МОДЕРАЦИИ СТАТЕЙ (БЭКЛОГ УДАЛЕННЫХ) ================= -->
+                <div id="section-articles" class="d-none">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">Модерация и бэклог статей</h1>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-deleted">
+                                Обновить бэклог
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive bg-white p-3 rounded shadow-sm">
+                        <table class="table table-striped table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Название статьи</th>
+                                    <th>Раздел (Папка)</th>
+                                    <th>Автор</th>
+                                    <th>Дата удаления</th>
+                                    <th class="text-end">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deleted-articles-table-body">
+                                <!-- Сюда JS вставит удаленные статьи -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
             </main>
         </div>
     </div>
@@ -405,21 +435,26 @@
 
         // 1. Переключение вкладок в боковом меню
         $('#sidebarMenu .nav-link').click(function(e) {
-            // Если кликнули по ссылкам разделов внутри админки
             const href = $(this).attr('href');
-            if (href === '/admin/' || href === '/admin/folders/') {
+            // Расширяем условие на 3 вкладки
+            if (href === '/admin/' || href === '/admin/folders/' || href === '/admin/articles/') {
                 e.preventDefault();
                 $('#sidebarMenu .nav-link').removeClass('active');
                 $(this).addClass('active');
 
+                // Скрываем абсолютно всё
+                $('#section-users, #section-folders, #section-articles').addClass('d-none');
+
+                // Включаем нужную вкладку
                 if (href === '/admin/') {
-                    $('#section-folders').addClass('d-none');
                     $('#section-users').removeClass('d-none');
                     loadUsers();
                 } else if (href === '/admin/folders/') {
-                    $('#section-users').addClass('d-none');
                     $('#section-folders').removeClass('d-none');
                     loadFolders();
+                } else if (href === '/admin/articles/') {
+                    $('#section-articles').removeClass('d-none');
+                    loadDeletedArticles(); // Загружаем бэклог
                 }
             }
         });
@@ -487,6 +522,76 @@
                 },
                 error: function(xhr) {
                     $('#folder-error-alert').text('Не удалось создать раздел. Возможно, такое имя или slug уже заняты.').removeClass('d-none');
+                }
+            });
+        });
+
+        // Функция загрузки удаленных статей
+        function loadDeletedArticles() {
+            $.ajax({
+                url: WIC.APP_PREFIX + '/api/get/deleted_articles',
+                method: 'GET',
+                success: function(articles) {
+                    let html = '';
+                    if (!articles || articles.length === 0) {
+                        html = '<tr><td colspan="6" class="text-center text-muted">Бэклог пуст. Статей на удаление нет.</td></tr>';
+                    } else {
+                        articles.forEach(function(art) {
+                            const date = new Date(art.deleted_at).toLocaleString('ru-RU');
+                            html += `
+                                <tr>
+                                    <td>${art.id}</td>
+                                    <td class="fw-bold">${escapeHtml(art.title)} <small class="text-muted">(${art.slug})</small></td>
+                                    <td>📁 ${escapeHtml(art.folder_name)}</td>
+                                    <td><span class="badge bg-light text-dark">${escapeHtml(art.author)}</span></td>
+                                    <td>${date}</td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-success btn-restore-art me-1" data-id="${art.id}">Восстановить</button>
+                                        <button class="btn btn-sm btn-danger btn-hard-delete-art" data-id="${art.id}">Удалить совсем</button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    }
+                    $('#deleted-articles-table-body').html(html);
+                },
+                error: function(xhr) {
+                    alert('Ошибка загрузки бэклога: ' + xhr.status);
+                }
+            });
+        }
+
+        $('#btn-refresh-deleted').click(loadDeletedArticles);
+
+        // Обработчик кнопки ВОССТАНОВИТЬ статью
+        $(document).on('click', '.btn-restore-art', function() {
+            const artId = $(this).data('id');
+            $.ajax({
+                url: WIC.APP_PREFIX + '/api/post/restore_article',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ id: artId }),
+                success: function() {
+                    loadDeletedArticles(); // Перерисовываем бэклог
+                }
+            });
+        });
+
+        // Обработчик кнопки УДАТИТЬ СОВСЕМ (Hard Delete)
+        $(document).on('click', '.btn-hard-delete-art', function() {
+            const artId = $(this).data('id');
+            if (!confirm('ВНИМАНИЕ! Статья, все её текстовые блоки и прикрепленные файлы будут НАВСЕГДА удалены из базы данных без возможности восстановления. Продолжить?')) return;
+
+            $.ajax({
+                url: WIC.APP_PREFIX + '/api/post/hard_delete_article',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ id: artId }),
+                success: function() {
+                    loadDeletedArticles(); // Перерисовываем бэклог
+                },
+                error: function(xhr) {
+                    alert('Не удалось произвести полную очистку: ' + xhr.status);
                 }
             });
         });

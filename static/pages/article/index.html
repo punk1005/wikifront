@@ -74,8 +74,8 @@
                     const article = response[0];
                     
                     // Наполняем шапку статьи данными
-                    $('#article-title').text(article.title);
-                    $('#article-folder').text(article.folder_name);
+                    $('#article-title').html(`<a href=${WIC.APP_PREFIX}/editarticle/${article.slug}>${article.title}</a>`);
+                    $('#article-folder').html(`<a href=${WIC.APP_PREFIX}/folder/${article.folder_slug}>${article.folder_name}</a>`);
                     $('#article-author').text(article.author);
                     $('#article-date').text(new Date(article.created_at).toLocaleString('ru-RU'));
                     document.title = article.title + " | Wiki";
